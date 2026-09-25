@@ -13,3 +13,5 @@
 - خروجی: output/fixtures.png
 
 ارسال تلگرام و گزارش نتایج/جدول‌ها در مراحل بعدی اضافه می‌شوند.
+
+<!-- parser validation trigger -->
