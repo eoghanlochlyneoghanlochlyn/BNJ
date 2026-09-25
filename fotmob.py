@@ -51,7 +51,7 @@ def _normalize(raw: dict) -> dict:
 
 def fetch_matches_for_iran_date(day: dt.date) -> list[dict]:
     url = "https://www.fotmob.com/api/data/matches"
-    response = requests.get(url, params={"date": day.isoformat()}, headers=HEADERS, timeout=40)
+    response = requests.get(url, params={"date": day.strftime("%Y%m%d")}, headers=HEADERS, timeout=40)
     response.raise_for_status()
 
     raw_matches: list[dict] = []
