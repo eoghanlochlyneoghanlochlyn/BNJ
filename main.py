@@ -19,13 +19,26 @@ def main() -> None:
     parser.add_argument("--send-telegram", action="store_true")
     args = parser.parse_args()
 
-    day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(IRAN_TIMEZONE).date()
+    day = (
+        dt.date.fromisoformat(args.date)
+        if args.date
+        else dt.datetime.now(IRAN_TIMEZONE).date()
+    )
+
     matches = fetch_matches_for_iran_date(day)
     selected = select_fixtures(matches)
 
     print(f"Date (Iran): {day.isoformat()}")
     print(f"Fetched matches: {len(matches)}")
     print(f"Selected fixtures: {len(selected)}")
+
+    # Never create/send a blank report. An empty result is a data-fetch
+    # or selection problem and must fail visibly instead.
+    if not selected:
+        raise RuntimeError(
+            f"No qualifying fixtures found for {day.isoformat()}; "
+            "report will not be rendered or sent."
+        )
 
     output = Path(args.output)
     render_fixtures(selected, day, output)
@@ -34,6 +47,7 @@ def main() -> None:
     if args.send_telegram:
         state = load_state()
         key = f"fixtures:{day.isoformat()}"
+
         if already_sent(state, key):
             print(f"Telegram report already sent: {key}")
             return
