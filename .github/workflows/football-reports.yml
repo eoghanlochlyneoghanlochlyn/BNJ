@@ -7,6 +7,11 @@ on:
         description: "Iran date YYYY-MM-DD (optional)"
         required: false
         type: string
+      send_telegram:
+        description: "Send the generated image to Telegram"
+        required: false
+        default: true
+        type: boolean
   schedule:
     - cron: "30 5 * * *"
 
@@ -20,15 +25,24 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Generate today's fixtures
+      - name: Generate and publish today's fixtures
+        env:
+          TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
+          TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
         run: |
           if [ -n "${{ inputs.date }}" ]; then
-            python main.py --date "${{ inputs.date }}"
+            python main.py --date "${{ inputs.date }}" --send-telegram
           else
-            python main.py
+            python main.py --send-telegram
           fi
-      - name: Upload image
-        uses: actions/upload-artifact@v4
-        with:
-          name: bnj-fixtures
-          path: output/fixtures.png
+      - name: Commit report state
+        run: |
+          if git diff --quiet -- report_state.json; then
+            echo "No state changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add report_state.json
+          git commit -m "Persist sent report state"
+          git push
