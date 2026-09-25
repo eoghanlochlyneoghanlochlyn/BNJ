@@ -1,5 +1,8 @@
 name: BNJ Football Reports
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
