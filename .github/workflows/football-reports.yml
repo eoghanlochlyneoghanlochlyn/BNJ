@@ -18,34 +18,58 @@ on:
   schedule:
     - cron: "30 5 * * *"
 
+concurrency:
+  group: bnj-football-reports
+  cancel-in-progress: false
+
 jobs:
   fixtures:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Generate and publish today's fixtures
         env:
           TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
           TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
+          SEND_TELEGRAM: ${{ inputs.send_telegram || 'true' }}
         run: |
           if [ -n "${{ inputs.date }}" ]; then
-            python main.py --date "${{ inputs.date }}" --send-telegram
+            if [ "$SEND_TELEGRAM" = "true" ]; then
+              python main.py --date "${{ inputs.date }}" --send-telegram
+            else
+              python main.py --date "${{ inputs.date }}"
+            fi
           else
-            python main.py --send-telegram
+            if [ "$SEND_TELEGRAM" = "true" ]; then
+              python main.py --send-telegram
+            else
+              python main.py
+            fi
           fi
+
       - name: Commit report state
         run: |
           if git diff --quiet -- report_state.json; then
             echo "No state changes."
             exit 0
           fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add report_state.json
           git commit -m "Persist sent report state"
+
+          # Rebase onto the latest main so a concurrent repository update
+          # cannot make the state push fail.
+          git pull --rebase origin main
           git push
