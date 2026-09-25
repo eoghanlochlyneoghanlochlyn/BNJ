@@ -57,7 +57,30 @@ jobs:
             fi
           fi
 
+      - name: Validate generated image
+        run: |
+          test -s output/fixtures.png
+          python - <<'PY'
+          from PIL import Image
+          image = Image.open("output/fixtures.png").convert("RGB")
+          pixels = image.getdata()
+          non_white = sum(pixel != (255, 255, 255) for pixel in pixels)
+          print(f"Image size: {image.size}")
+          print(f"Non-white pixels: {non_white}")
+          if non_white == 0:
+              raise SystemExit("Generated fixture image is completely white.")
+          PY
+
+      - name: Upload generated image
+        uses: actions/upload-artifact@v4
+        with:
+          name: bnj-fixtures-preview
+          path: output/fixtures.png
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Commit report state
+        if: ${{ inputs.send_telegram != false }}
         run: |
           if git diff --quiet -- report_state.json; then
             echo "No state changes."
@@ -69,7 +92,5 @@ jobs:
           git add report_state.json
           git commit -m "Persist sent report state"
 
-          # Rebase onto the latest main so a concurrent repository update
-          # cannot make the state push fail.
           git pull --rebase origin main
           git push
