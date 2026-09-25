@@ -197,3 +197,5 @@ def fetch_matches_for_iran_date(day: dt.date) -> list[dict]:
         f"from {len(leagues)} leagues."
     )
     return result
+
+# validation trigger
