@@ -1,5 +1,8 @@
 name: BNJ Test - 2026-09-25
 
+permissions:
+  contents: write
+
 on:
   push:
     paths:
