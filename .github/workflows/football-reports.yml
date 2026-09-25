@@ -4,11 +4,6 @@ permissions:
   contents: write
 
 on:
-  push:
-    paths:
-      - "main.py"
-      - "fotmob.py"
-      - ".github/workflows/football-reports.yml"
   workflow_dispatch:
     inputs:
       date:
