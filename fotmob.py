@@ -133,6 +133,96 @@ def _normalize_match(raw: dict, league: dict) -> dict | None:
     }
 
 
+
+def _stage_label(value: Any) -> str:
+    """Extract an actual match round/group, never fabricate a group."""
+    if isinstance(value, (int, float)):
+        return f"Week {int(value)}"
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("name", "displayName", "roundName", "groupName", "shortName", "stageName"):
+            label = _stage_label(value.get(key))
+            if label:
+                return label
+        for key in ("group", "groupId", "groupName"):
+            label = _stage_label(value.get(key))
+            if label:
+                return f"Group {label}" if not label.lower().startswith("group") else label
+        for key in ("round", "matchweek", "matchday", "week", "roundNumber"):
+            label = _stage_label(value.get(key))
+            if label:
+                return label if not label.isdigit() else f"Week {label}"
+    return ""
+
+
+def _extract_match_stage(details: dict) -> str:
+    """Read match-specific FotMob matchFacts/overview before league metadata."""
+    content = details.get("content") or {}
+    if not isinstance(content, dict):
+        content = {}
+    facts = content.get("matchFacts") or {}
+    if not isinstance(facts, dict):
+        facts = {}
+    info = details.get("general") or {}
+    if not isinstance(info, dict):
+        info = {}
+    overview = content.get("overview") or {}
+    if not isinstance(overview, dict):
+        overview = {}
+    header = details.get("header") or {}
+    if not isinstance(header, dict):
+        header = {}
+    candidates = (
+        facts.get("infoBox"),
+        facts.get("tournament"),
+        overview.get("tournament"),
+        info,
+        header.get("league"),
+        details.get("league"),
+    )
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        for key in ("groupName", "group", "roundName", "round", "matchweek",
+                    "matchday", "stage", "stageName"):
+            value = candidate.get(key)
+            label = _stage_label(value)
+            if label:
+                if key in ("groupName", "group") and not label.lower().startswith("group"):
+                    return f"Group {label}"
+                return label
+    return ""
+
+
+def enrich_match_stages(matches: list[dict]) -> None:
+    """Fetch details only for selected fixtures; leave unknown stages blank."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def fetch_one(match: dict) -> tuple[dict, str]:
+        try:
+            response = requests.get(
+                f"{FOTMOB_BASE_URL}/api/matchDetails",
+                params={"matchId": match["id"]},
+                headers=HEADERS,
+                timeout=12,
+            )
+            response.raise_for_status()
+            details = response.json()
+            if isinstance(details, dict):
+                return match, _extract_match_stage(details)
+        except (requests.RequestException, ValueError) as error:
+            print(f"[STAGE] Match {match['id']}: details unavailable: {error}")
+        return match, ""
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(fetch_one, match) for match in matches]
+        for future in as_completed(futures):
+            match, stage = future.result()
+            if stage:
+                match["stage"] = stage
+            print(f"[STAGE] {match['id']}: {match.get('stage') or 'unknown'}")
+
 def fetch_matches_for_iran_date(day: dt.date) -> list[dict]:
     # FotMob's daily endpoint expects YYYYMMDD, not YYYY-MM-DD.
     date_text = day.strftime("%Y%m%d")
