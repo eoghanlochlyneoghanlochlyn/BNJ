@@ -22,5 +22,4 @@ COMPETITION_IDS = {
 
 # Kept only for compatibility with older imports elsewhere in the project.
 PRIORITY_TEAMS = set()
-MAJOR_LEAGUES = set()
 COMPETITION_KEYWORDS = set()
