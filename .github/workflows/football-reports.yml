@@ -34,6 +34,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install system fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
@@ -61,21 +66,24 @@ jobs:
         run: |
           test -s output/fixtures.png
           python - <<'PY'
+          from pathlib import Path
           from PIL import Image
           image = Image.open("output/fixtures.png").convert("RGB")
-          pixels = image.getdata()
-          non_white = sum(pixel != (255, 255, 255) for pixel in pixels)
           print(f"Image size: {image.size}")
+          non_white = sum(pixel != (255, 255, 255) for pixel in image.getdata())
           print(f"Non-white pixels: {non_white}")
           if non_white == 0:
               raise SystemExit("Generated fixture image is completely white.")
+          for path in sorted(Path("output").glob("fixtures-*.png")):
+              check = Image.open(path).convert("RGB")
+              print(f"Extra page: {path} | size={check.size}")
           PY
 
-      - name: Upload generated image
+      - name: Upload generated images
         uses: actions/upload-artifact@v4
         with:
           name: bnj-fixtures-preview
-          path: output/fixtures.png
+          path: output/fixtures*.png
           if-no-files-found: error
           retention-days: 7
 
@@ -86,11 +94,9 @@ jobs:
             echo "No state changes."
             exit 0
           fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add report_state.json
           git commit -m "Persist sent report state"
-
           git pull --rebase origin main
           git push
