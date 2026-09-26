@@ -158,23 +158,26 @@ def _stage_label(value: Any) -> str:
 
 def _extract_match_stage(details: dict) -> str:
     """Read match-specific FotMob matchFacts/overview before league metadata."""
-    content = details.get("content") or {}
+    page_props = ((details.get("props") or {}).get("pageProps") or {})
+    content = details.get("content") or page_props.get("content") or {}
     if not isinstance(content, dict):
         content = {}
     facts = content.get("matchFacts") or {}
     if not isinstance(facts, dict):
         facts = {}
-    info = details.get("general") or {}
+    page_props = ((details.get("props") or {}).get("pageProps") or {})
+    info = details.get("general") or page_props.get("general") or {}
     if not isinstance(info, dict):
         info = {}
     overview = content.get("overview") or {}
     if not isinstance(overview, dict):
         overview = {}
-    header = details.get("header") or {}
+    header = details.get("header") or page_props.get("header") or {}
     if not isinstance(header, dict):
         header = {}
     candidates = (
         facts.get("infoBox"),
+        (facts.get("infoBox") or {}).get("Tournament") if isinstance(facts.get("infoBox"), dict) else None,
         facts.get("tournament"),
         overview.get("tournament"),
         info,
@@ -184,11 +187,18 @@ def _extract_match_stage(details: dict) -> str:
     for candidate in candidates:
         if not isinstance(candidate, dict):
             continue
-        for key in ("groupName", "group", "roundName", "round", "matchweek",
+        for key in ("leagueName", "groupName", "group", "matchRound", "leagueRoundName", "roundName", "round", "matchweek",
                     "matchday", "stage", "stageName"):
             value = candidate.get(key)
+            if key == "leagueName" and isinstance(value, str):
+                import re
+                match = re.search(r"\bGrp\.\s*([A-Za-z0-9]+)", value, re.I)
+                if match:
+                    return f"Group {match.group(1)}"
             label = _stage_label(value)
             if label:
+                if key in ("matchRound", "leagueRoundName") and label.isdigit():
+                    return f"Week {label}"
                 if key in ("groupName", "group") and not label.lower().startswith("group"):
                     return f"Group {label}"
                 return label
@@ -202,7 +212,7 @@ def enrich_match_stages(matches: list[dict]) -> None:
     def fetch_one(match: dict) -> tuple[dict, str]:
         try:
             response = requests.get(
-                f"{FOTMOB_BASE_URL}/api/matchDetails",
+                f"{FOTMOB_BASE_URL}/api/data/matchDetails",
                 params={"matchId": match["id"]},
                 headers=HEADERS,
                 timeout=12,
