@@ -16,7 +16,7 @@ CARD_GAP = 18
 COLUMN_GAP = 28
 CARD_RADIUS = 26
 COMPETITION_GAP = 28
-MATCH_ROW_H = 104
+MATCH_ROW_H = 152
 
 BG = (247, 248, 250)
 CARD = (255, 255, 255)
@@ -212,26 +212,45 @@ def _draw_match_row(image, draw, box, match):
     kickoff = _kickoff(match)
     stage = _match_stage(match)
 
-    left_x = center_x - 250
-    right_x = center_x + 250
-    logo_y = (y1 + y2) // 2 - 10
-    name_y = (y1 + y2) // 2 + 30
-    _draw_team(image, draw, left_x, logo_y, name_y, home, home_id, 300)
-    _draw_team(image, draw, right_x, logo_y, name_y, away, away_id, 300)
+    # Four disjoint regions: home, clock, away, and stage.
+    # Logos and names stack vertically within their own fixed columns.
+    stage_width = 180
+    left_edge = x1 + 28
+    right_edge = x2 - stage_width - 18
+    usable = right_edge - left_edge
+    center_x = (left_edge + right_edge) // 2
+    team_offset = min(270, int(usable * 0.27))
+    team_width = min(330, int(usable * 0.30))
+    logo_y = y1 + 48
+    name_y = y1 + 113
+    _draw_team(image, draw, center_x - team_offset, logo_y, name_y,
+               home, home_id, team_width)
+    _draw_team(image, draw, center_x + team_offset, logo_y, name_y,
+               away, away_id, team_width)
 
-    time_font = _font(28, True)
-    time_w, time_h = 64, 42
-    time_y = (y1 + y2) // 2 - 4
-    draw.rounded_rectangle((center_x-time_w, time_y-time_h//2, center_x+time_w, time_y+time_h//2), radius=14, fill=ACCENT)
-    bbox = draw.textbbox((0, 0), kickoff, font=time_font, direction="rtl", language="fa")
+    time_font = _font(29, True)
+    time_w, time_h = 76, 46
+    time_y = y1 + 73
+    draw.rounded_rectangle(
+        (center_x-time_w, time_y-time_h//2,
+         center_x+time_w, time_y+time_h//2),
+        radius=14, fill=ACCENT,
+    )
+    bbox = draw.textbbox((0, 0), kickoff, font=time_font,
+                         direction="rtl", language="fa")
     tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
-    draw.text((center_x - tw/2 - bbox[0], time_y - th/2 - bbox[1]), kickoff,
-              font=time_font, fill=(255,255,255), direction="rtl", language="fa")
+    draw.text((center_x-tw/2-bbox[0], time_y-th/2-bbox[1]),
+              kickoff, font=time_font, fill=(255,255,255),
+              direction="rtl", language="fa")
 
     if stage:
-        stage_font = _fit_font(draw, stage, 170, [20, 18, 16], True)
-        draw.text((x2 - 18, (y1+y2)//2), stage, font=stage_font, fill=MUTED,
-                  anchor="rm", direction="rtl", language="fa")
+        stage_font = _fit_font(draw, stage, stage_width-12, [21,19,17,15], True)
+        stage_bbox = draw.textbbox((0, 0), stage, font=stage_font,
+                                   direction="rtl", language="fa")
+        stage_h = stage_bbox[3]-stage_bbox[1]
+        draw.text((x2-14-stage_bbox[2], y1+76-stage_h/2-stage_bbox[1]),
+                  stage, font=stage_font, fill=MUTED,
+                  anchor=None, direction="rtl", language="fa")
 
 
 def _draw_competition_box(image, draw, x1, y1, x2, matches, competition):
