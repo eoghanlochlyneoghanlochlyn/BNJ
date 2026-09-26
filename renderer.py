@@ -26,6 +26,33 @@ BORDER = (226, 229, 234)
 LOGO_SIZE = 76
 LOGO_TIMEOUT = 5
 _logo_cache: dict[str, Image.Image | None] = {}
+_team_fa_cache: dict[str, str] | None = None
+TEAMS_FA_URL = "https://raw.githubusercontent.com/eoghanlochlyneoghanlochlyn/Ftbllrslts/main/teams.json"
+
+COMPETITION_FA = {
+    "Premier League": "لیگ برتر انگلیس", "LaLiga": "لالیگا", "La Liga": "لالیگا",
+    "Bundesliga": "بوندس‌لیگا", "Serie A": "سری آ", "Ligue 1": "لیگ ۱ فرانسه",
+    "Champions League": "لیگ قهرمانان اروپا", "UEFA Champions League": "لیگ قهرمانان اروپا",
+    "Europa League": "لیگ اروپا", "UEFA Europa League": "لیگ اروپا",
+    "Conference League": "لیگ کنفرانس اروپا", "UEFA Conference League": "لیگ کنفرانس اروپا",
+    "FA Cup": "جام حذفی انگلیس", "EFL Cup": "جام اتحادیه انگلیس", "Carabao Cup": "جام اتحادیه انگلیس",
+    "Copa del Rey": "جام حذفی اسپانیا", "Coppa Italia": "جام حذفی ایتالیا",
+    "DFB Pokal": "جام حذفی آلمان", "DFB-Pokal": "جام حذفی آلمان", "Coupe de France": "جام حذفی فرانسه",
+    "Community Shield": "جام خیریه انگلیس", "UEFA Super Cup": "سوپرجام اروپا",
+    "European Championship": "جام ملت‌های اروپا", "World Cup": "جام جهانی",
+    "World Cup Qualifiers": "انتخابی جام جهانی", "Nations League": "لیگ ملت‌های اروپا",
+    "Copa America": "کوپا آمریکا", "Copa Libertadores": "کوپا لیبرتادورس",
+    "AFC Champions League Elite": "لیگ نخبگان آسیا", "AFC Champions League Two": "لیگ قهرمانان آسیا ۲",
+}
+
+FALLBACK_TEAM_FA = {
+    "Liverpool": "لیورپول", "Arsenal": "آرسنال", "Manchester City": "منچسترسیتی",
+    "Manchester United": "منچستریونایتد", "Chelsea": "چلسی", "Tottenham Hotspur": "تاتنهام",
+    "Juventus": "یوونتوس", "Milan": "میلان", "Inter": "اینتر", "Bayern Munich": "بایرن مونیخ",
+    "Borussia Dortmund": "بوروسیا دورتموند", "Paris Saint-Germain": "پاری سن ژرمن",
+    "Real Madrid": "رئال مادرید", "Barcelona": "بارسلونا", "Atletico Madrid": "اتلتیکو مادرید",
+    "Atlético Madrid": "اتلتیکو مادرید", "Bournemouth": "بورنموث",
+}
 
 
 def _font(size: int, bold: bool = False):
@@ -39,9 +66,33 @@ def _font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 
+def _load_team_fa() -> dict[str, str]:
+    global _team_fa_cache
+    if _team_fa_cache is not None:
+        return _team_fa_cache
+    mapping: dict[str, str] = {}
+    try:
+        response = requests.get(TEAMS_FA_URL, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    team_id = str(item.get("id") or "")
+                    persian = str(item.get("persian") or "").strip()
+                    if team_id and persian:
+                        mapping[team_id] = persian
+    except (requests.RequestException, ValueError):
+        pass
+    _team_fa_cache = mapping
+    return mapping
+
+
 def _team_name(value: object) -> str:
     if isinstance(value, dict):
-        return str(value.get("name") or value.get("longName") or value.get("shortName") or "—")
+        team_id = str(value.get("id") or value.get("teamId") or "")
+        english = str(value.get("name") or value.get("longName") or value.get("shortName") or "—").strip()
+        return _load_team_fa().get(team_id) or FALLBACK_TEAM_FA.get(english, english)
     return str(value or "—")
 
 
@@ -52,7 +103,17 @@ def _team_id(value: object) -> str:
 
 
 def _competition_name(match: dict) -> str:
-    return str(match.get("competition") or match.get("competitionName") or match.get("league") or "نامشخص")
+    english = str(match.get("competition") or match.get("competitionName") or match.get("league") or "نامشخص").strip()
+    if english in COMPETITION_FA:
+        return COMPETITION_FA[english]
+    for key, value in COMPETITION_FA.items():
+        if key.casefold() in english.casefold():
+            return value
+    return english
+
+
+def _to_persian_digits(value: str) -> str:
+    return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
 
 def _kickoff(match: dict) -> str:
@@ -60,8 +121,9 @@ def _kickoff(match: dict) -> str:
     if not start:
         return "—"
     try:
-        return dt.datetime.fromisoformat(start).strftime("%H:%M")
-    except ValueError:
+        parsed = dt.datetime.fromisoformat(str(start))
+        return _to_persian_digits(parsed.strftime("%H:%M"))
+    except (TypeError, ValueError):
         return "—"
 
 
@@ -148,9 +210,11 @@ def _draw_card(image, draw, box, match, compact):
         _draw_team(image, draw, center_x - 180, logo_y, name_y, home, home_id, name_max)
         _draw_team(image, draw, center_x + 180, logo_y, name_y, away, away_id, name_max)
 
-    time_font = _font(42 if not compact else 36, True)
-    draw.ellipse((center_x - 48, time_y - 48, center_x + 48, time_y + 48), fill=ACCENT)
-    _center_text(draw, center_x, time_y + 1, kickoff, time_font, (255, 255, 255), "ltr")
+    time_font = _font(44 if not compact else 38, True)
+    time_w = 150 if not compact else 132
+    time_h = 68 if not compact else 60
+    draw.rounded_rectangle((center_x - time_w, time_y - time_h // 2, center_x + time_w, time_y + time_h // 2), radius=22, fill=ACCENT)
+    _center_text(draw, center_x, time_y + 1, kickoff, time_font, (255, 255, 255), "rtl")
 
 
 def _group_matches(matches):
@@ -198,7 +262,7 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
 
     draw.text((WIDTH - MARGIN_X, 68), "مسابقات امروز", font=_font(56, True), fill=TEXT,
               anchor="ra", direction="rtl", language="fa")
-    draw.text((WIDTH - MARGIN_X, 145), day.strftime("%Y/%m/%d"), font=_font(25), fill=MUTED,
+    draw.text((WIDTH - MARGIN_X, 145), _to_persian_digits(day.strftime("%Y/%m/%d")), font=_font(25), fill=MUTED,
               anchor="ra", direction="ltr")
     if page_total > 1:
         draw.text((MARGIN_X, 145), f"{page_no} / {page_total}", font=_font(22, True), fill=MUTED,
