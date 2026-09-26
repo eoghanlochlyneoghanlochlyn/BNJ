@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from config import COMPETITION_IDS, MAJOR_LEAGUES, PRIORITY_TEAM_IDS
+from config import COMPETITION_IDS, MAJOR_LEAGUE_IDS, PRIORITY_TEAM_IDS
 
 
 def _team_id(value: object) -> str:
@@ -27,18 +27,13 @@ def _has_priority_team(match: dict) -> bool:
 
 
 def qualifies(match: dict) -> bool:
-    # Coverage is based on the supplied numeric competition IDs,
-    # the five major domestic leagues, and the supplied 15 numeric team IDs.
-    competition = str(
-        match.get("competitionName")
-        or match.get("competition")
-        or match.get("league")
-        or ""
-    ).casefold()
-    if competition in {str(name).casefold() for name in MAJOR_LEAGUES}:
+    # Selection is strictly numeric: competition ID or priority team ID.
+    competition_id = _match_competition_id(match)
+
+    if competition_id in COMPETITION_IDS:
         return True
 
-    if _match_competition_id(match) in COMPETITION_IDS:
+    if competition_id in MAJOR_LEAGUE_IDS:
         return True
 
     return _has_priority_team(match)
