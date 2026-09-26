@@ -2,20 +2,24 @@ from zoneinfo import ZoneInfo
 
 IRAN_TIMEZONE = ZoneInfo("Asia/Tehran")
 
-PRIORITY_TEAMS = {
-    "Liverpool", "Arsenal", "Manchester City", "Manchester United",
-    "Chelsea", "Tottenham Hotspur", "Juventus", "AC Milan", "Inter",
-    "Bayern Munich", "Borussia Dortmund", "Paris Saint-Germain",
-    "Real Madrid", "Barcelona", "Atlético Madrid",
+# Exactly the 15 team IDs supplied by the user.
+PRIORITY_TEAM_IDS = {
+    "8650", "9825", "8456", "10260", "8455",
+    "8586", "9885", "8564", "8636", "9823",
+    "9789", "9847", "8633", "8634", "9906",
 }
 
+# Exactly the numeric competition IDs supplied by the user.
+# mode, stage, extra_teams, extra_country and aliases are intentionally ignored.
 MAJOR_LEAGUES = {"Premier League", "LaLiga", "Serie A", "Bundesliga", "Ligue 1"}
 
-COMPETITION_KEYWORDS = {
-    "uefa champions league", "uefa europa league", "uefa conference league",
-    "fa cup", "efl cup", "carabao cup", "copa del rey", "coppa italia",
-    "dfb-pokal", "coupe de france", "super cup", "uefa super cup",
-    "afc champions league elite", "afc champions league two",
-    "uefa nations league", "european championship", "world cup",
-    "asian cup", "copa america", "club world cup",
+COMPETITION_IDS = {
+    "77", "50", "9806", "44", "290", "289", "297", "525", "9469",
+    "526", "45", "42", "73", "10216", "78", "10703", "247", "139",
+    "11015", "8924", "207", "74", "132", "133", "209", "141", "134",
+    "138", "10607", "10199",
 }
+
+# Kept only for compatibility with older imports elsewhere in the project.
+PRIORITY_TEAMS = set()
+COMPETITION_KEYWORDS = set()
