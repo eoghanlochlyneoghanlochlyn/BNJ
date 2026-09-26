@@ -5,7 +5,7 @@ import datetime as dt
 from pathlib import Path
 
 from config import IRAN_TIMEZONE
-from fotmob import fetch_matches_for_iran_date
+from fotmob import fetch_matches_for_iran_date, enrich_match_stages
 from renderer import render_fixtures
 from report_state import already_sent, load_state, mark_sent
 from selector import select_fixtures
@@ -39,6 +39,8 @@ def main() -> None:
             f"No qualifying fixtures found for {day.isoformat()}; "
             "report will not be rendered or sent."
         )
+
+    enrich_match_stages(selected)
 
     output = Path(args.output)
     render_fixtures(selected, day, output)
