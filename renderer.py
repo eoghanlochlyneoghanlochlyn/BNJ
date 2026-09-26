@@ -204,53 +204,72 @@ def _match_stage(match: dict) -> str:
 
 def _draw_match_row(image, draw, box, match):
     x1, y1, x2, y2 = box
-    center_x = (x1 + x2) // 2
     home = _team_name(match.get("home"))
     away = _team_name(match.get("away"))
-    home_id = _team_id(match.get("home"))
-    away_id = _team_id(match.get("away"))
     kickoff = _kickoff(match)
     stage = _match_stage(match)
+    mid_y = (y1 + y2) // 2
 
-    # Four disjoint regions: home, clock, away, and stage.
-    # Logos and names stack vertically within their own fixed columns.
+    # RTL visual order: home logo | home name | time | away name |
+    # away logo | stage. Every item has a reserved non-overlapping region.
     stage_width = 180
-    left_edge = x1 + 28
-    right_edge = x2 - stage_width - 18
-    usable = right_edge - left_edge
-    center_x = (left_edge + right_edge) // 2
-    team_offset = min(270, int(usable * 0.27))
-    team_width = min(330, int(usable * 0.30))
-    logo_y = y1 + 48
-    name_y = y1 + 113
-    _draw_team(image, draw, center_x - team_offset, logo_y, name_y,
-               home, home_id, team_width)
-    _draw_team(image, draw, center_x + team_offset, logo_y, name_y,
-               away, away_id, team_width)
+    logo_size = 66
+    clock_width = 154
+    content_left = x1 + 25
+    content_right = x2 - stage_width - 20
+    mid_x = (content_left + content_right) // 2
+    left_logo_x = content_left + 45
+    right_logo_x = content_right - 45
+    name_gap = 16
+    clock_gap = 18
+    home_name_left = left_logo_x + logo_size//2 + name_gap
+    home_name_right = mid_x - clock_width//2 - clock_gap
+    away_name_left = mid_x + clock_width//2 + clock_gap
+    away_name_right = right_logo_x - logo_size//2 - name_gap
+
+    for team_id, logo_x in ((_team_id(match.get("home")), left_logo_x),
+                            (_team_id(match.get("away")), right_logo_x)):
+        logo = _load_logo(team_id)
+        if logo is not None:
+            logo.thumbnail((logo_size, logo_size), Image.Resampling.LANCZOS)
+            _paste_logo(image, logo, (logo_x, mid_y))
+        else:
+            draw.ellipse((logo_x-27,mid_y-27,logo_x+27,mid_y+27),
+                         fill=(236,239,244))
+
+    def draw_name(name, left, right):
+        max_w = max(60, right-left)
+        font = _fit_font(draw, name, max_w, [30,28,26,24,22,20,18], True)
+        while _text_width(draw, name, font) > max_w and len(name)>2:
+            name = name[:-2].rstrip() + "…"
+        bbox = draw.textbbox((0,0),name,font=font,direction="rtl",language="fa")
+        tw,th = bbox[2]-bbox[0],bbox[3]-bbox[1]
+        draw.text(((left+right-tw)/2-bbox[0],mid_y-th/2-bbox[1]),
+                  name,font=font,fill=TEXT,direction="rtl",language="fa")
+
+    draw_name(home,home_name_left,home_name_right)
+    draw_name(away,away_name_left,away_name_right)
 
     time_font = _font(29, True)
-    time_w, time_h = 76, 46
-    time_y = y1 + 73
-    draw.rounded_rectangle(
-        (center_x-time_w, time_y-time_h//2,
-         center_x+time_w, time_y+time_h//2),
-        radius=14, fill=ACCENT,
-    )
-    bbox = draw.textbbox((0, 0), kickoff, font=time_font,
-                         direction="rtl", language="fa")
-    tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
-    draw.text((center_x-tw/2-bbox[0], time_y-th/2-bbox[1]),
-              kickoff, font=time_font, fill=(255,255,255),
-              direction="rtl", language="fa")
+    draw.rounded_rectangle((mid_x-clock_width//2,mid_y-24,
+                            mid_x+clock_width//2,mid_y+24),
+                           radius=14,fill=ACCENT)
+    bbox = draw.textbbox((0,0),kickoff,font=time_font,
+                         direction="rtl",language="fa")
+    tw,th = bbox[2]-bbox[0],bbox[3]-bbox[1]
+    draw.text((mid_x-tw/2-bbox[0],mid_y-th/2-bbox[1]),
+              kickoff,font=time_font,fill=(255,255,255),
+              direction="rtl",language="fa")
 
     if stage:
-        stage_font = _fit_font(draw, stage, stage_width-12, [21,19,17,15], True)
-        stage_bbox = draw.textbbox((0, 0), stage, font=stage_font,
-                                   direction="rtl", language="fa")
-        stage_h = stage_bbox[3]-stage_bbox[1]
-        draw.text((x2-14-stage_bbox[2], y1+76-stage_h/2-stage_bbox[1]),
-                  stage, font=stage_font, fill=MUTED,
-                  anchor=None, direction="rtl", language="fa")
+        stage_font = _fit_font(draw,stage,stage_width-20,[22,20,18,16,14],True)
+        bbox = draw.textbbox((0,0),stage,font=stage_font,
+                             direction="rtl",language="fa")
+        tw,th=bbox[2]-bbox[0],bbox[3]-bbox[1]
+        stage_x=x2-stage_width//2
+        draw.text((stage_x-tw/2-bbox[0],mid_y-th/2-bbox[1]),
+                  stage,font=stage_font,fill=MUTED,
+                  direction="rtl",language="fa")
 
 
 def _draw_competition_box(image, draw, x1, y1, x2, matches, competition):
