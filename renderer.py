@@ -199,22 +199,29 @@ def _draw_card(image, draw, box, match, compact):
     draw.text((x2 - 22, y1 + 22), competition, font=comp_font, fill=MUTED,
               anchor="ra", direction="rtl", language="fa")
 
+    # Keep competition inside each match card; no separate competition banner.
     if compact:
-        logo_y, name_y, time_y = y1 + 82, y1 + 132, y2 - 27
-        name_max = (inner_w - 130) // 2
-        _draw_team(image, draw, x1 + (x2 - x1) // 4, logo_y, name_y, home, home_id, name_max)
-        _draw_team(image, draw, x1 + 3 * (x2 - x1) // 4, logo_y, name_y, away, away_id, name_max)
+        logo_y, name_y = y1 + 86, y1 + 145
+        name_max = (inner_w - 190) // 2
+        _draw_team(image, draw, center_x - 205, logo_y, name_y, home, home_id, name_max)
+        _draw_team(image, draw, center_x + 205, logo_y, name_y, away, away_id, name_max)
     else:
-        logo_y, name_y, time_y = y1 + 96, y1 + 154, y2 - 35
-        name_max = (inner_w - 180) // 2
-        _draw_team(image, draw, center_x - 180, logo_y, name_y, home, home_id, name_max)
-        _draw_team(image, draw, center_x + 180, logo_y, name_y, away, away_id, name_max)
+        logo_y, name_y = y1 + 94, y1 + 156
+        name_max = (inner_w - 220) // 2
+        _draw_team(image, draw, center_x - 220, logo_y, name_y, home, home_id, name_max)
+        _draw_team(image, draw, center_x + 220, logo_y, name_y, away, away_id, name_max)
 
-    time_font = _font(44 if not compact else 38, True)
-    time_w = 150 if not compact else 132
-    time_h = 68 if not compact else 60
-    draw.rounded_rectangle((center_x - time_w, time_y - time_h // 2, center_x + time_w, time_y + time_h // 2), radius=22, fill=ACCENT)
-    _center_text(draw, center_x, time_y + 1, kickoff, time_font, (255, 255, 255), "rtl")
+    # Small centered time pill, positioned in the gap between the teams.
+    time_font = _font(30 if not compact else 27, True)
+    time_w = 66 if not compact else 58
+    time_h = 46 if not compact else 42
+    time_y = y1 + (y2 - y1) // 2 + 8
+    draw.rounded_rectangle(
+        (center_x - time_w, time_y - time_h // 2, center_x + time_w, time_y + time_h // 2),
+        radius=16,
+        fill=ACCENT,
+    )
+    _center_text(draw, center_x, time_y, kickoff, time_font, (255, 255, 255), "rtl")
 
 
 def _group_matches(matches):
@@ -251,11 +258,10 @@ def _split_groups(groups, max_items):
 def _render_page(groups, day, page_no, page_total, output, cards_per_row):
     compact = cards_per_row == 2
     card_h = 245 if not compact else 230
-    section_h = 66
     content_w = WIDTH - 2 * MARGIN_X
     card_w = (content_w - COLUMN_GAP) // cards_per_row
     rows = sum((len(items) + cards_per_row - 1) // cards_per_row for _, items in groups)
-    height = min(MAX_HEIGHT, max(MIN_HEIGHT, HEADER_H + 26 + len(groups) * section_h + rows * (card_h + CARD_GAP) + 70))
+    height = min(MAX_HEIGHT, max(MIN_HEIGHT, HEADER_H + 26 + rows * (card_h + CARD_GAP) + len(groups) * 12 + 70))
 
     image = Image.new("RGB", (WIDTH, height), BG)
     draw = ImageDraw.Draw(image)
@@ -270,10 +276,6 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
 
     y = HEADER_H
     for competition, items in groups:
-        draw.text((WIDTH - MARGIN_X, y), competition,
-                  font=_fit_font(draw, competition, content_w, [30, 28, 26], True),
-                  fill=ACCENT, anchor="ra", direction="rtl", language="fa")
-        y += section_h
         for index, match in enumerate(items):
             row = index // cards_per_row
             col = index % cards_per_row
