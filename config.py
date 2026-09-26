@@ -11,6 +11,8 @@ PRIORITY_TEAM_IDS = {
 
 # Exactly the numeric competition IDs supplied by the user.
 # mode, stage, extra_teams, extra_country and aliases are intentionally ignored.
+MAJOR_LEAGUES = {"Premier League", "LaLiga", "Serie A", "Bundesliga", "Ligue 1"}
+
 COMPETITION_IDS = {
     "77", "50", "9806", "44", "290", "289", "297", "525", "9469",
     "526", "45", "42", "73", "10216", "78", "10703", "247", "139",
