@@ -35,7 +35,7 @@ def qualifies(match: dict) -> bool:
         or match.get("league")
         or ""
     ).casefold()
-    if any(str(name).casefold() in competition for name in MAJOR_LEAGUES):
+    if competition in {str(name).casefold() for name in MAJOR_LEAGUES}:
         return True
 
     if _match_competition_id(match) in COMPETITION_IDS:
