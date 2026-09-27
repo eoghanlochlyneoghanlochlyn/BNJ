@@ -44,6 +44,13 @@ _logo_cache: dict[str, Image.Image | None] = {}
 _team_fa_cache: dict[str, str] | None = None
 TEAMS_FA_URL = "https://raw.githubusercontent.com/eoghanlochlyneoghanlochlyn/Ftbllrslts/main/teams.json"
 
+NATIONS_LEAGUE_LEVELS = {
+    "9806": "لیگ ملت‌های اروپا — سطح A",
+    "9807": "لیگ ملت‌های اروپا — سطح B",
+    "9808": "لیگ ملت‌های اروپا — سطح C",
+    "9809": "لیگ ملت‌های اروپا — سطح D",
+}
+
 COMPETITION_FA = {
     "Premier League": "لیگ برتر انگلیس", "LaLiga": "لالیگا", "La Liga": "لالیگا",
     "Bundesliga": "بوندس‌لیگا", "Serie A": "سری آ", "Ligue 1": "لیگ ۱ فرانسه",
@@ -118,7 +125,23 @@ def _team_id(value: object) -> str:
 
 
 def _competition_name(match: dict) -> str:
-    english = str(match.get("competition") or match.get("competitionName") or match.get("league") or "نامشخص").strip()
+    # Keep Nations League A/B/C/D separate by numeric FotMob league ID.
+    # Some FotMob responses use the same generic competition name for all levels.
+    competition_id = str(
+        match.get("leagueId")
+        or match.get("competitionId")
+        or match.get("tournamentId")
+        or ""
+    )
+    if competition_id in NATIONS_LEAGUE_LEVELS:
+        return NATIONS_LEAGUE_LEVELS[competition_id]
+
+    english = str(
+        match.get("competition")
+        or match.get("competitionName")
+        or match.get("league")
+        or "نامشخص"
+    ).strip()
     if english in COMPETITION_FA:
         return COMPETITION_FA[english]
     for key, value in COMPETITION_FA.items():
