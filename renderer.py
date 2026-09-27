@@ -45,10 +45,10 @@ _team_fa_cache: dict[str, str] | None = None
 TEAMS_FA_URL = "https://raw.githubusercontent.com/eoghanlochlyneoghanlochlyn/Ftbllrslts/main/teams.json"
 
 NATIONS_LEAGUE_LEVELS = {
-    "9806": "لیگ ملت‌های اروپا — سطح A",
-    "9807": "لیگ ملت‌های اروپا — سطح B",
-    "9808": "لیگ ملت‌های اروپا — سطح C",
-    "9809": "لیگ ملت‌های اروپا — سطح D",
+    "9806": "لیگ ملت‌های اروپا A",
+    "9807": "لیگ ملت‌های اروپا B",
+    "9808": "لیگ ملت‌های اروپا C",
+    "9809": "لیگ ملت‌های اروپا D",
 }
 
 COMPETITION_FA = {
