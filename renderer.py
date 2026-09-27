@@ -131,6 +131,27 @@ def _to_persian_digits(value: str) -> str:
     return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
 
 
+def _jalali_date(day: dt.date) -> str:
+    """Convert Gregorian date to Solar Hijri without runtime dependencies."""
+    gy, gm, gd = day.year, day.month, day.day
+    g_days = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
+    gy2 = gy + 1 if gm > 2 else gy
+    days = 355666 + 365 * gy + (gy2 + 3) // 4 - (gy2 + 99) // 100
+    days += (gy2 + 399) // 400 + gd + g_days[gm - 1]
+    jy = -1595 + 33 * (days // 12053)
+    days %= 12053
+    jy += 4 * (days // 1461)
+    days %= 1461
+    if days > 365:
+        jy += (days - 1) // 365
+        days = (days - 1) % 365
+    if days < 186:
+        jm, jd = 1 + days // 31, 1 + days % 31
+    else:
+        jm, jd = 7 + (days - 186) // 30, 1 + (days - 186) % 30
+    return _to_persian_digits(f"{jy:04d}/{jm:02d}/{jd:02d}")
+
+
 def _kickoff(match: dict) -> str:
     start = match.get("startIran")
     if not start:
@@ -351,7 +372,7 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
     draw.line((MARGIN_X, HEADER_H-22, WIDTH-MARGIN_X, HEADER_H-22), fill=BORDER, width=2)
     draw.text((WIDTH - MARGIN_X, 68), "مسابقات امروز", font=_font(56, True), fill=TEXT,
               anchor="ra", direction="rtl", language="fa")
-    draw.text((WIDTH - MARGIN_X, 145), _to_persian_digits(day.strftime("%Y/%m/%d")), font=_font(25), fill=MUTED,
+    draw.text((WIDTH - MARGIN_X, 145), _jalali_date(day), font=_font(25), fill=MUTED,
               anchor="ra", direction="ltr")
     if page_total > 1:
         draw.text((MARGIN_X, 145), f"{_to_persian_digits(str(page_no))} / {_to_persian_digits(str(page_total))}",
