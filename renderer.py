@@ -372,8 +372,19 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
     draw.line((MARGIN_X, HEADER_H-22, WIDTH-MARGIN_X, HEADER_H-22), fill=BORDER, width=2)
     draw.text((WIDTH - MARGIN_X, 68), "مسابقات امروز", font=_font(56, True), fill=TEXT,
               anchor="ra", direction="rtl", language="fa")
-    draw.text((WIDTH - MARGIN_X, 145), _jalali_date(day), font=_font(25), fill=MUTED,
-              anchor="ra", direction="ltr")
+    # Draw date separators as vector strokes: some Arabic font builds show
+    # ASCII slash as a missing-glyph square when mixed with Persian digits.
+    date_font = _font(25)
+    date_parts = _jalali_date(day).split("/")
+    date_x = WIDTH - MARGIN_X
+    for index, part in enumerate(reversed(date_parts)):
+        draw.text((date_x, 145), part, font=date_font, fill=MUTED,
+                  anchor="ra", direction="ltr")
+        date_x -= draw.textlength(part, font=date_font, direction="ltr")
+        if index < len(date_parts) - 1:
+            date_x -= 9
+            draw.line((date_x - 13, 169, date_x - 2, 148), fill=MUTED, width=3)
+            date_x -= 22
     if page_total > 1:
         draw.text((MARGIN_X, 145), f"{_to_persian_digits(str(page_no))} / {_to_persian_digits(str(page_total))}",
                   font=_font(22, True), fill=MUTED, anchor="la", direction="ltr")
