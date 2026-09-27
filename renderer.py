@@ -18,12 +18,25 @@ CARD_RADIUS = 26
 COMPETITION_GAP = 28
 MATCH_ROW_H = 152
 
-BG = (247, 248, 250)
-CARD = (255, 255, 255)
-TEXT = (24, 27, 32)
-MUTED = (105, 111, 122)
-ACCENT = (30, 93, 170)
-BORDER = (226, 229, 234)
+BG = (9, 17, 33)
+CARD = (20, 32, 52)
+TEXT = (244, 248, 255)
+MUTED = (166, 184, 207)
+ACCENT = (42, 112, 193)
+BORDER = (48, 67, 92)
+
+# Restrained broadcast-style accents; all unknown competitions use blue.
+COMPETITION_ACCENTS = {
+    "لیگ برتر انگلیس": (167, 94, 232),
+    "لالیگا": (232, 91, 103),
+    "سری آ": (77, 155, 239),
+    "بوندس‌لیگا": (230, 79, 79),
+    "لیگ ۱ فرانسه": (218, 182, 76),
+    "لیگ قهرمانان اروپا": (98, 135, 242),
+    "لیگ اروپا": (237, 151, 70),
+    "لیگ کنفرانس اروپا": (94, 192, 145),
+}
+
 
 LOGO_SIZE = 76
 LOGO_TIMEOUT = 5
@@ -179,7 +192,7 @@ def _draw_team(image, draw, center_x, logo_y, name_y, name, team_id, max_width):
         _paste_logo(image, logo, (center_x, logo_y))
     else:
         r = 28
-        draw.ellipse((center_x - r, logo_y - r, center_x + r, logo_y + r), fill=(236, 239, 244))
+        draw.ellipse((center_x - r, logo_y - r, center_x + r, logo_y + r), fill=(45, 63, 86))
     font = _fit_font(draw, name, max_width, [30, 28, 26, 24], True)
     _center_text(draw, center_x, name_y, name, font, TEXT)
 
@@ -202,7 +215,7 @@ def _match_stage(match: dict) -> str:
     return text
 
 
-def _draw_match_row(image, draw, box, match):
+def _draw_match_row(image, draw, box, match, accent=ACCENT):
     x1, y1, x2, y2 = box
     home = _team_name(match.get("home"))
     away = _team_name(match.get("away"))
@@ -235,7 +248,7 @@ def _draw_match_row(image, draw, box, match):
             _paste_logo(image, logo, (logo_x, mid_y))
         else:
             draw.ellipse((logo_x-27,mid_y-27,logo_x+27,mid_y+27),
-                         fill=(236,239,244))
+                         fill=(45,63,86))
 
     def draw_name(name, left, right):
         max_w = max(60, right-left)
@@ -253,7 +266,7 @@ def _draw_match_row(image, draw, box, match):
     time_font = _font(29, True)
     draw.rounded_rectangle((mid_x-clock_width//2,mid_y-24,
                             mid_x+clock_width//2,mid_y+24),
-                           radius=14,fill=ACCENT)
+                           radius=14,fill=accent)
     bbox = draw.textbbox((0,0),kickoff,font=time_font,
                          direction="rtl",language="fa")
     tw,th = bbox[2]-bbox[0],bbox[3]-bbox[1]
@@ -276,7 +289,11 @@ def _draw_competition_box(image, draw, x1, y1, x2, matches, competition):
     header_h = 64
     box_h = header_h + len(matches) * MATCH_ROW_H + max(0, len(matches)-1)
     y2 = y1 + box_h
+    accent = COMPETITION_ACCENTS.get(competition, ACCENT)
     draw.rounded_rectangle((x1,y1,x2,y2), radius=CARD_RADIUS, fill=CARD, outline=BORDER, width=2)
+    # Competition accent rail and a subtle, inset header panel.
+    draw.rounded_rectangle((x1+12,y1+13,x1+19,y1+header_h-12), radius=3, fill=accent)
+    draw.rounded_rectangle((x1+29,y1+9,x2-12,y1+header_h-7), radius=12, fill=(26, 42, 65))
     font = _fit_font(draw, competition, x2-x1-40, [30,28,26,24], True)
     draw.text((x2-22,y1+30), competition, font=font, fill=TEXT, anchor="rm", direction="rtl", language="fa")
     draw.line((x1+18,y1+header_h,x2-18,y1+header_h), fill=BORDER, width=2)
@@ -285,7 +302,7 @@ def _draw_competition_box(image, draw, x1, y1, x2, matches, competition):
         ry2 = ry1 + MATCH_ROW_H
         if i:
             draw.line((x1+35,ry1,x2-35,ry1), fill=BORDER, width=1)
-        _draw_match_row(image, draw, (x1+18,ry1,x2-18,ry2), match)
+        _draw_match_row(image, draw, (x1+18,ry1,x2-18,ry2), match, accent)
     return y2
 
 
@@ -329,6 +346,9 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
     height = min(MAX_HEIGHT, max(MIN_HEIGHT, HEADER_H + 26 + sum(comp_heights) + max(0, len(groups)-1)*COMPETITION_GAP + 70))
     image = Image.new("RGB", (WIDTH, height), BG)
     draw = ImageDraw.Draw(image)
+    # Thin broadcast header rule and quiet corner details, drawn in Pillow.
+    draw.rounded_rectangle((MARGIN_X, 36, WIDTH-MARGIN_X, 43), radius=3, fill=(42, 112, 193))
+    draw.line((MARGIN_X, HEADER_H-22, WIDTH-MARGIN_X, HEADER_H-22), fill=BORDER, width=2)
     draw.text((WIDTH - MARGIN_X, 68), "مسابقات امروز", font=_font(56, True), fill=TEXT,
               anchor="ra", direction="rtl", language="fa")
     draw.text((WIDTH - MARGIN_X, 145), _to_persian_digits(day.strftime("%Y/%m/%d")), font=_font(25), fill=MUTED,
