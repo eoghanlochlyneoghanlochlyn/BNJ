@@ -377,13 +377,22 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
     date_font = _font(25)
     date_parts = _jalali_date(day).split("/")
     date_x = WIDTH - MARGIN_X
+    date_anchor_y = 145
+    # Use the actual digit ink bounds rather than an assumed baseline.
+    # This keeps the hand-drawn slash centered on the visible numerals.
+    sample_box = draw.textbbox((0, date_anchor_y), "۱۴۰۵", font=date_font,
+                               anchor="ra", direction="ltr")
+    digit_top, digit_bottom = sample_box[1], sample_box[3]
+    slash_top = digit_top + 2
+    slash_bottom = digit_bottom - 2
     for index, part in enumerate(reversed(date_parts)):
-        draw.text((date_x, 145), part, font=date_font, fill=MUTED,
+        draw.text((date_x, date_anchor_y), part, font=date_font, fill=MUTED,
                   anchor="ra", direction="ltr")
         date_x -= draw.textlength(part, font=date_font, direction="ltr")
         if index < len(date_parts) - 1:
             date_x -= 9
-            draw.line((date_x - 13, 169, date_x - 2, 148), fill=MUTED, width=3)
+            draw.line((date_x - 13, slash_bottom, date_x - 2, slash_top),
+                      fill=MUTED, width=3)
             date_x -= 22
     if page_total > 1:
         draw.text((MARGIN_X, 145), f"{_to_persian_digits(str(page_no))} / {_to_persian_digits(str(page_total))}",
