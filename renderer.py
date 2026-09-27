@@ -356,11 +356,29 @@ def _draw_competition_title(draw, x: int, y: int, competition: str, max_width: i
     total_width = base_width + gap + level_width
 
     right_edge = x
-    draw.text((right_edge, y), base, font=persian_font, fill=TEXT, anchor="ra",
-              direction="rtl", language="fa")
+
+    # The two fonts have different ascender/descender metrics. Drawing them
+    # with the same y-coordinate makes the Latin letter visibly sit too high
+    # or too low. Align the actual ink bounds around the same vertical center.
+    base_bbox = draw.textbbox(
+        (right_edge, y), base, font=persian_font, anchor="ra",
+        direction="rtl", language="fa"
+    )
+    base_center = (base_bbox[1] + base_bbox[3]) / 2
+    base_y = y + ((y) - base_center)
+    draw.text((right_edge, base_y), base, font=persian_font, fill=TEXT,
+              anchor="ra", direction="rtl", language="fa")
+
     level_right = right_edge - base_width - gap
-    draw.text((level_right, y), level, font=latin_font, fill=TEXT, anchor="ra",
-              direction="ltr")
+    level_bbox = draw.textbbox(
+        (level_right, y), level, font=latin_font, anchor="ra",
+        direction="ltr"
+    )
+    level_center = (level_bbox[1] + level_bbox[3]) / 2
+    level_y = y + ((y) - level_center)
+    draw.text((level_right, level_y), level, font=latin_font, fill=TEXT,
+              anchor="ra", direction="ltr")
+
     if total_width > max_width:
         return
 
