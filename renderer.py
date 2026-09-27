@@ -25,7 +25,6 @@ MUTED = (166, 184, 207)
 ACCENT = (42, 112, 193)
 BORDER = (48, 67, 92)
 
-# Restrained broadcast-style accents; all unknown competitions use blue.
 COMPETITION_ACCENTS = {
     "لیگ برتر انگلیس": (167, 94, 232),
     "لالیگا": (232, 91, 103),
@@ -36,7 +35,6 @@ COMPETITION_ACCENTS = {
     "لیگ اروپا": (237, 151, 70),
     "لیگ کنفرانس اروپا": (94, 192, 145),
 }
-
 
 LOGO_SIZE = 76
 LOGO_TIMEOUT = 5
@@ -88,6 +86,17 @@ def _font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 
+def _latin_font(size: int, bold: bool = False):
+    candidates = [
+        Path("/usr/share/fonts/truetype/dejavu/" + ("DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf")),
+        Path("/usr/share/fonts/truetype/noto/" + ("NotoSans-Regular.ttf" if not bold else "NotoSans-Bold.ttf")),
+    ]
+    for path in candidates:
+        if path.exists():
+            return ImageFont.truetype(path, size)
+    return _font(size, bold)
+
+
 def _load_team_fa() -> dict[str, str]:
     global _team_fa_cache
     if _team_fa_cache is not None:
@@ -125,8 +134,6 @@ def _team_id(value: object) -> str:
 
 
 def _competition_name(match: dict) -> str:
-    # Keep Nations League A/B/C/D separate by numeric FotMob league ID.
-    # Some FotMob responses use the same generic competition name for all levels.
     competition_id = str(
         match.get("leagueId")
         or match.get("competitionId")
@@ -155,7 +162,6 @@ def _to_persian_digits(value: str) -> str:
 
 
 def _jalali_date(day: dt.date) -> str:
-    """Convert Gregorian date to Solar Hijri without runtime dependencies."""
     gy, gm, gd = day.year, day.month, day.day
     g_days = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
     gy2 = gy + 1 if gm > 2 else gy
@@ -198,7 +204,7 @@ def _fit_font(draw, text: str, max_width: int, sizes: list[int], bold: bool):
     return _font(sizes[-1], bold)
 
 
-def _center_text(draw, x: int, y: int, text: str, font, fill, direction: str = "rtl"):
+def _center_text(draw: ImageDraw.ImageDraw, x: int, y: int, text: str, font, fill, direction: str = "rtl"):
     draw.text(
         (x, y), text, font=font, fill=fill, anchor="ma",
         direction=direction, language="fa" if direction == "rtl" else None,
@@ -267,8 +273,6 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT):
     stage = _match_stage(match)
     mid_y = (y1 + y2) // 2
 
-    # RTL visual order: home logo | home name | time | away name |
-    # away logo | stage. Every item has a reserved non-overlapping region.
     stage_width = 180
     logo_size = 66
     clock_width = 154
@@ -291,8 +295,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT):
             logo.thumbnail((logo_size, logo_size), Image.Resampling.LANCZOS)
             _paste_logo(image, logo, (logo_x, mid_y))
         else:
-            draw.ellipse((logo_x-27,mid_y-27,logo_x+27,mid_y+27),
-                         fill=(45,63,86))
+            draw.ellipse((logo_x-27,mid_y-27,logo_x+27,mid_y+27), fill=(45,63,86))
 
     def draw_name(name, left, right):
         max_w = max(60, right-left)
@@ -329,17 +332,48 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT):
                   direction="rtl",language="fa")
 
 
+def _draw_competition_title(draw, x: int, y: int, competition: str, max_width: int):
+    """Render Persian competition text with a Latin-capable font for A/B/C/D."""
+    level = None
+    base = competition
+    for suffix in (" A", " B", " C", " D"):
+        if competition.endswith(suffix) and competition.startswith("لیگ ملت‌های اروپا"):
+            level = suffix.strip()
+            base = competition[:-2]
+            break
+
+    if level is None:
+        font = _fit_font(draw, competition, max_width, [30, 28, 26, 24], True)
+        draw.text((x, y), competition, font=font, fill=TEXT, anchor="rm",
+                  direction="rtl", language="fa")
+        return
+
+    latin_font = _latin_font(24, True)
+    persian_font = _fit_font(draw, base, max_width - 50, [30, 28, 26, 24], True)
+    base_width = _text_width(draw, base, persian_font, "rtl")
+    level_width = draw.textlength(level, font=latin_font, direction="ltr")
+    gap = 10
+    total_width = base_width + gap + level_width
+
+    right_edge = x
+    draw.text((right_edge, y), base, font=persian_font, fill=TEXT, anchor="ra",
+              direction="rtl", language="fa")
+    level_right = right_edge - base_width - gap
+    draw.text((level_right, y), level, font=latin_font, fill=TEXT, anchor="ra",
+              direction="ltr")
+    if total_width > max_width:
+        return
+
+
 def _draw_competition_box(image, draw, x1, y1, x2, matches, competition):
     header_h = 64
     box_h = header_h + len(matches) * MATCH_ROW_H + max(0, len(matches)-1)
     y2 = y1 + box_h
     accent = COMPETITION_ACCENTS.get(competition, ACCENT)
     draw.rounded_rectangle((x1,y1,x2,y2), radius=CARD_RADIUS, fill=CARD, outline=BORDER, width=2)
-    # Competition accent rail and a subtle, inset header panel.
     draw.rounded_rectangle((x1+12,y1+13,x1+19,y1+header_h-12), radius=3, fill=accent)
     draw.rounded_rectangle((x1+29,y1+9,x2-12,y1+header_h-7), radius=12, fill=(26, 42, 65))
-    font = _fit_font(draw, competition, x2-x1-40, [30,28,26,24], True)
-    draw.text((x2-22,y1+30), competition, font=font, fill=TEXT, anchor="rm", direction="rtl", language="fa")
+    _draw_competition_title(draw, x2-22, y1+30, competition, x2-x1-40)
     draw.line((x1+18,y1+header_h,x2-18,y1+header_h), fill=BORDER, width=2)
     for i, match in enumerate(matches):
         ry1 = y1 + header_h + i*(MATCH_ROW_H+1)
@@ -353,6 +387,7 @@ def _draw_competition_box(image, draw, x1, y1, x2, matches, competition):
 def _draw_card(image, draw, box, match, compact):
     _draw_competition_box(image, draw, box[0], box[1], box[2], [match], _competition_name(match))
 
+
 def _group_matches(matches):
     groups = OrderedDict()
     for match in matches:
@@ -360,49 +395,19 @@ def _group_matches(matches):
     return list(groups.items())
 
 
-def _split_groups(groups, max_items):
-    pages = []
-    current = []
-    count = 0
-    for competition, items in groups:
-        start = 0
-        while start < len(items):
-            remaining = max_items - count
-            if remaining <= 0:
-                pages.append(current)
-                current, count = [], 0
-                remaining = max_items
-            take = min(remaining, len(items) - start)
-            current.append((competition, items[start:start + take]))
-            count += take
-            start += take
-            if count >= max_items:
-                pages.append(current)
-                current, count = [], 0
-    if current:
-        pages.append(current)
-    return pages
-
-
 def _render_page(groups, day, page_no, page_total, output, cards_per_row):
-    content_w = WIDTH - 2 * MARGIN_X
     comp_heights = [64 + len(items) * MATCH_ROW_H + max(0, len(items)-1) for _, items in groups]
     height = min(MAX_HEIGHT, max(MIN_HEIGHT, HEADER_H + 26 + sum(comp_heights) + max(0, len(groups)-1)*COMPETITION_GAP + 70))
     image = Image.new("RGB", (WIDTH, height), BG)
     draw = ImageDraw.Draw(image)
-    # Thin broadcast header rule and quiet corner details, drawn in Pillow.
     draw.rounded_rectangle((MARGIN_X, 36, WIDTH-MARGIN_X, 43), radius=3, fill=(42, 112, 193))
     draw.line((MARGIN_X, HEADER_H-22, WIDTH-MARGIN_X, HEADER_H-22), fill=BORDER, width=2)
     draw.text((WIDTH - MARGIN_X, 68), "مسابقات امروز", font=_font(56, True), fill=TEXT,
               anchor="ra", direction="rtl", language="fa")
-    # Draw date separators as vector strokes: some Arabic font builds show
-    # ASCII slash as a missing-glyph square when mixed with Persian digits.
     date_font = _font(25)
     date_parts = _jalali_date(day).split("/")
     date_x = WIDTH - MARGIN_X
     date_anchor_y = 145
-    # Use the actual digit ink bounds rather than an assumed baseline.
-    # This keeps the hand-drawn slash centered on the visible numerals.
     sample_box = draw.textbbox((0, date_anchor_y), "۱۴۰۵", font=date_font,
                                anchor="ra", direction="ltr")
     digit_top, digit_bottom = sample_box[1], sample_box[3]
@@ -427,6 +432,7 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
         y += box_h + COMPETITION_GAP
     output.parent.mkdir(parents=True, exist_ok=True)
     image.save(output, "PNG", optimize=True)
+
 
 def render_fixtures(matches: list[dict], day: dt.date, output: Path) -> None:
     if not matches:
