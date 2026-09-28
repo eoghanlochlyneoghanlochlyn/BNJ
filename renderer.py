@@ -415,8 +415,8 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
         draw_compact_name(away, int(away_x))
 
         # Clock stays centered between the two team blocks.
-        time_font = _font(24, True)
-        clock_width = 126
+        time_font = _font(20 if '(' in kickoff else 24, True)
+        clock_width = 190 if match.get('resultLabel') and '(' in kickoff else 126
         clock_h = 42
         draw.rounded_rectangle(
             (
@@ -468,7 +468,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     mid_y = (y1 + y2) // 2
     stage_width = 180
     logo_size = 66
-    clock_width = 154
+    clock_width = 220 if match.get('resultLabel') and '(' in kickoff else 154
     content_left = x1 + 25
     content_right = x2 - stage_width - 20
     mid_x = (content_left + content_right) // 2
@@ -545,7 +545,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     draw_name(home, home_name_left, home_name_right)
     draw_name(away, away_name_left, away_name_right)
 
-    time_font = _font(29, True)
+    time_font = _font(23 if '(' in kickoff else 29, True)
     draw.rounded_rectangle(
         (mid_x-clock_width//2, mid_y-24,
          mid_x+clock_width//2, mid_y+24),
