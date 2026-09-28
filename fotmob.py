@@ -120,6 +120,9 @@ def _normalize_match(raw: dict, league: dict) -> dict | None:
         },
         "leagueId": str(league_id) if league_id is not None else "",
         "competitionName": competition_name,
+        "rawStatus": status,
+        "rawHome": home,
+        "rawAway": away,
         "stage": (
             raw.get("stage") or raw.get("round") or raw.get("roundName")
             or raw.get("matchweek") or raw.get("matchday") or raw.get("group")
