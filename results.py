@@ -55,7 +55,9 @@ def score_for(match):
     ph = number(home.get("penaltyScore"))
     pa = number(away.get("penaltyScore"))
     if ph is None: ph = number(penalty.get("home"))
+    if ph is None: ph = number(home.get("penalties"))
     if pa is None: pa = number(penalty.get("away"))
+    if pa is None: pa = number(away.get("penalties"))
     if ph is not None and pa is not None:
         label += f" ({ph} - {pa})"
     match["resultLabel"] = label.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
