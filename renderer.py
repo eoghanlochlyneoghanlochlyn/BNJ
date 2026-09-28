@@ -16,7 +16,9 @@ CARD_GAP = 18
 COLUMN_GAP = 28
 CARD_RADIUS = 26
 COMPETITION_GAP = 28
-MATCH_ROW_H = 152
+MATCH_ROW_H = 142
+COMPACT_MATCH_ROW_H = 126
+TWO_COLUMN_THRESHOLD = 9
 
 BG = (9, 17, 33)
 CARD = (20, 32, 52)
@@ -281,7 +283,7 @@ def _match_stage(match: dict) -> str:
     return text
 
 
-def _draw_match_row(image, draw, box, match, accent=ACCENT):
+def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     x1, y1, x2, y2 = box
     home = _team_name(match.get("home"))
     away = _team_name(match.get("away"))
@@ -289,8 +291,8 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT):
     stage = _match_stage(match)
     mid_y = (y1 + y2) // 2
 
-    stage_width = 180
-    logo_size = 66
+    stage_width = 160 if compact else 180
+    logo_size = 58 if compact else 66
     clock_width = 154
     content_left = x1 + 25
     content_right = x2 - stage_width - 20
@@ -315,7 +317,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT):
 
     def draw_name(name, left, right):
         max_w = max(60, right-left)
-        font = _fit_font(draw, name, max_w, [30,28,26,24,22,20,18], True)
+        font = _fit_font(draw, name, max_w, ([26,24,22,20,18,16] if compact else [30,28,26,24,22,20,18]), True)
         while _text_width(draw, name, font) > max_w and len(name)>2:
             name = name[:-2].rstrip() + "…"
         bbox = draw.textbbox((0,0),name,font=font,direction="rtl",language="fa")
@@ -326,10 +328,10 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT):
     draw_name(home,home_name_left,home_name_right)
     draw_name(away,away_name_left,away_name_right)
 
-    time_font = _font(29, True)
+    time_font = _font(25 if compact else 29, True)
     draw.rounded_rectangle((mid_x-clock_width//2,mid_y-24,
                             mid_x+clock_width//2,mid_y+24),
-                           radius=14,fill=accent)
+                           radius=12 if compact else 14,fill=accent)
     bbox = draw.textbbox((0,0),kickoff,font=time_font,
                          direction="rtl",language="fa")
     tw,th = bbox[2]-bbox[0],bbox[3]-bbox[1]
@@ -338,7 +340,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT):
               direction="rtl",language="fa")
 
     if stage:
-        stage_font = _fit_font(draw,stage,stage_width-20,[22,20,18,16,14],True)
+        stage_font = _fit_font(draw,stage,stage_width-20,([18,16,14,12] if compact else [22,20,18,16,14]),True)
         bbox = draw.textbbox((0,0),stage,font=stage_font,
                              direction="rtl",language="fa")
         tw,th=bbox[2]-bbox[0],bbox[3]-bbox[1]
@@ -399,24 +401,24 @@ def _draw_competition_title(draw, x: int, y: int, competition: str, max_width: i
         return
 
 
-def _draw_competition_box(image, draw, x1, y1, x2, matches, competition):
-    header_h = 64
-    box_h = header_h + len(matches) * MATCH_ROW_H + max(0, len(matches)-1)
+def _draw_competition_box(image, draw, x1, y1, x2, matches, competition, compact=False):
+    header_h = 58 if compact else 64
+    row_h = COMPACT_MATCH_ROW_H if compact else MATCH_ROW_H
+    box_h = header_h + len(matches) * row_h + max(0, len(matches)-1)
     y2 = y1 + box_h
     accent = COMPETITION_ACCENTS.get(competition, ACCENT)
     draw.rounded_rectangle((x1,y1,x2,y2), radius=CARD_RADIUS, fill=CARD, outline=BORDER, width=2)
     draw.rounded_rectangle((x1+12,y1+13,x1+19,y1+header_h-12), radius=3, fill=accent)
     draw.rounded_rectangle((x1+29,y1+9,x2-12,y1+header_h-7), radius=12, fill=(26, 42, 65))
-    _draw_competition_title(draw, x2-22, y1+30, competition, x2-x1-40)
+    _draw_competition_title(draw, x2-22, y1+header_h//2, competition, x2-x1-40)
     draw.line((x1+18,y1+header_h,x2-18,y1+header_h), fill=BORDER, width=2)
     for i, match in enumerate(matches):
-        ry1 = y1 + header_h + i*(MATCH_ROW_H+1)
-        ry2 = ry1 + MATCH_ROW_H
+        ry1 = y1 + header_h + i*(row_h+1)
+        ry2 = ry1 + row_h
         if i:
             draw.line((x1+35,ry1,x2-35,ry1), fill=BORDER, width=1)
-        _draw_match_row(image, draw, (x1+18,ry1,x2-18,ry2), match, accent)
+        _draw_match_row(image, draw, (x1+18,ry1,x2-18,ry2), match, accent, compact=compact)
     return y2
-
 
 def _draw_card(image, draw, box, match, compact):
     _draw_competition_box(image, draw, box[0], box[1], box[2], [match], _competition_name(match))
@@ -430,8 +432,25 @@ def _group_matches(matches):
 
 
 def _render_page(groups, day, page_no, page_total, output, cards_per_row):
-    comp_heights = [64 + len(items) * MATCH_ROW_H + max(0, len(items)-1) for _, items in groups]
-    height = min(MAX_HEIGHT, max(MIN_HEIGHT, HEADER_H + 26 + sum(comp_heights) + max(0, len(groups)-1)*COMPETITION_GAP + 70))
+    two_column = cards_per_row == 2
+    row_h = COMPACT_MATCH_ROW_H if two_column else MATCH_ROW_H
+    header_h = 58 if two_column else 64
+    render_groups = groups
+
+    if two_column:
+        columns = [[], []]
+        heights = [0, 0]
+        for competition, items in groups:
+            comp_h = header_h + len(items) * row_h + max(0, len(items)-1)
+            target = 0 if heights[0] <= heights[1] else 1
+            columns[target].append((competition, items))
+            heights[target] += comp_h + (COMPETITION_GAP if len(columns[target]) > 1 else 0)
+        content_h = max(heights)
+    else:
+        comp_heights = [header_h + len(items) * row_h + max(0, len(items)-1) for _, items in groups]
+        content_h = sum(comp_heights) + max(0, len(groups)-1)*COMPETITION_GAP
+
+    height = min(MAX_HEIGHT, max(MIN_HEIGHT, HEADER_H + 26 + content_h + 70))
     image = Image.new("RGB", (WIDTH, height), BG)
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle((MARGIN_X, 36, WIDTH-MARGIN_X, 43), radius=3, fill=(42, 112, 193))
@@ -442,61 +461,102 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
     date_parts = _jalali_date(day).split("/")
     date_x = WIDTH - MARGIN_X
     date_anchor_y = 145
-    sample_box = draw.textbbox((0, date_anchor_y), "۱۴۰۵", font=date_font,
-                               anchor="ra", direction="ltr")
+    sample_box = draw.textbbox((0, date_anchor_y), "۱۴۰۵", font=date_font, anchor="ra", direction="ltr")
     digit_top, digit_bottom = sample_box[1], sample_box[3]
     slash_top = digit_top + 2
     slash_bottom = digit_bottom - 2
     for index, part in enumerate(reversed(date_parts)):
-        draw.text((date_x, date_anchor_y), part, font=date_font, fill=MUTED,
-                  anchor="ra", direction="ltr")
+        draw.text((date_x, date_anchor_y), part, font=date_font, fill=MUTED, anchor="ra", direction="ltr")
         date_x -= draw.textlength(part, font=date_font, direction="ltr")
         if index < len(date_parts) - 1:
             date_x -= 9
-            draw.line((date_x - 13, slash_bottom, date_x - 2, slash_top),
-                      fill=MUTED, width=3)
+            draw.line((date_x - 13, slash_bottom, date_x - 2, slash_top), fill=MUTED, width=3)
             date_x -= 22
     if page_total > 1:
         draw.text((MARGIN_X, 145), f"{_to_persian_digits(str(page_no))} / {_to_persian_digits(str(page_total))}",
                   font=_font(22, True), fill=MUTED, anchor="la", direction="ltr")
-    y = HEADER_H
-    for competition, items in groups:
-        box_h = 64 + len(items) * MATCH_ROW_H + max(0, len(items)-1)
-        _draw_competition_box(image, draw, MARGIN_X, y, WIDTH-MARGIN_X, items, competition)
-        y += box_h + COMPETITION_GAP
+
+    if two_column:
+        column_width = (WIDTH - 2*MARGIN_X - COLUMN_GAP) // 2
+        for col, col_groups in enumerate(columns):
+            x1 = MARGIN_X + col * (column_width + COLUMN_GAP)
+            x2 = x1 + column_width
+            y = HEADER_H
+            for competition, items in col_groups:
+                box_h = header_h + len(items) * row_h + max(0, len(items)-1)
+                _draw_competition_box(image, draw, x1, y, x2, items, competition, compact=True)
+                y += box_h + COMPETITION_GAP
+    else:
+        y = HEADER_H
+        for competition, items in render_groups:
+            box_h = header_h + len(items) * row_h + max(0, len(items)-1)
+            _draw_competition_box(image, draw, MARGIN_X, y, WIDTH-MARGIN_X, items, competition, compact=False)
+            y += box_h + COMPETITION_GAP
+
     output.parent.mkdir(parents=True, exist_ok=True)
     image.save(output, "PNG", optimize=True)
-
 
 def render_fixtures(matches: list[dict], day: dt.date, output: Path) -> None:
     if not matches:
         raise ValueError("Cannot render a fixture report with zero matches.")
     if not features.check("raqm"):
         raise RuntimeError("Pillow was built without libraqm; Persian RTL rendering cannot be trusted.")
+
     groups = _group_matches(matches)
+    use_two_columns = len(matches) >= TWO_COLUMN_THRESHOLD
+    cards_per_row = 2 if use_two_columns else 1
+    row_h = COMPACT_MATCH_ROW_H if use_two_columns else MATCH_ROW_H
+    header_h = 58 if use_two_columns else 64
     usable_h = MAX_HEIGHT - HEADER_H - 70
+
     pages = []
     current = []
-    used = 0
+    used = [0, 0] if use_two_columns else [0]
+
     for competition, items in groups:
-        comp_h = 64 + len(items) * MATCH_ROW_H + max(0, len(items)-1)
-        needed = comp_h + (COMPETITION_GAP if current else 0)
-        if current and used + needed > usable_h:
-            pages.append(current)
-            current = []
-            used = 0
-        current.append((competition, items))
-        used += needed
+        comp_h = header_h + len(items) * row_h + max(0, len(items)-1)
+        if use_two_columns:
+            target = 0 if used[0] <= used[1] else 1
+            needed = comp_h + (COMPETITION_GAP if used[target] else 0)
+            if used[target] and used[target] + needed > usable_h:
+                other = 1 - target
+                if used[other] + comp_h + (COMPETITION_GAP if used[other] else 0) <= usable_h:
+                    target = other
+                else:
+                    pages.append(current)
+                    current = []
+                    used = [0, 0]
+                    target = 0
+            current.append((competition, items, target))
+            used[target] += comp_h + (COMPETITION_GAP if used[target] else 0)
+        else:
+            needed = comp_h + (COMPETITION_GAP if current else 0)
+            if current and used[0] + needed > usable_h:
+                pages.append(current)
+                current = []
+                used = [0]
+            current.append((competition, items))
+            used[0] += needed
+
     if current:
         pages.append(current)
+
     page_total = len(pages)
     if page_total == 1:
-        _render_page(pages[0], day, 1, 1, output, 1)
+        if use_two_columns:
+            _render_page([(c, items) for c, items, _ in pages[0]], day, 1, 1, output, 2)
+        else:
+            _render_page(pages[0], day, 1, 1, output, 1)
         return
+
     stem, suffix = output.stem, output.suffix or ".png"
     generated = []
-    for index, page_groups in enumerate(pages, start=1):
+    for index, page in enumerate(pages, start=1):
         path = output.with_name(f"{stem}-{index}{suffix}")
-        _render_page(page_groups, day, index, page_total, path, 1)
+        if use_two_columns:
+            _render_page([(c, items) for c, items, _ in page], day, index, page_total, path, 2)
+        else:
+            _render_page(page, day, index, page_total, path, 1)
         generated.append(path)
     generated[0].replace(output)
+
