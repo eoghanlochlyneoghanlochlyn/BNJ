@@ -75,7 +75,7 @@ def get_match(match_id: str) -> dict:
                 key_low = str(key).casefold()
                 if side == "home" and key_low in {"hometeam", "home_team", "home"}:
                     candidate = team_from(child)
-                    if candidate["id"] or candidate["name"]:
+                    if candidate.get("id") or candidate.get("name"):
                         return candidate
                 if side == "away" and key_low in {"awayteam", "away_team", "away"}:
                     candidate = team_from(child)
