@@ -20,6 +20,8 @@ def load_match(match_id):
     header = details.get("header") or {}
     general = details.get("general") or {}
     teams = header.get("teams") or details.get("teams") or {}
+    if isinstance(teams, list):
+        teams = {"home": teams[0] if len(teams) > 0 else {}, "away": teams[1] if len(teams) > 1 else {}}
     home = teams.get("home") or header.get("homeTeam") or {}
     away = teams.get("away") or header.get("awayTeam") or {}
     status = header.get("status") or {}
