@@ -48,7 +48,7 @@ def get_match(match_id: str) -> dict:
     if not isinstance(header, dict):
         header = {}
 
-    teams = details.get("teams") or content.get("teams") or {}
+    teams = details.get("teams") or content.get("teams") or header.get("teams") or {}
     if not isinstance(teams, dict):
         teams = {}
 
@@ -63,13 +63,40 @@ def get_match(match_id: str) -> dict:
         general.get("matchTimeUTC")
         or general.get("utcTime")
         or header.get("utcTime")
+        or (header.get("status") or {}).get("utcTime")
         or details.get("utcTime")
+        or details.get("matchTimeUTC")
     )
     parsed = _parse_utc(utc_value)
+
     if parsed is None:
         status = details.get("status") or content.get("status") or {}
         if isinstance(status, dict):
-            parsed = _parse_utc(status.get("utcTime") or status.get("startTime"))
+            parsed = _parse_utc(
+                status.get("utcTime")
+                or status.get("startTime")
+                or status.get("timestamp")
+            )
+
+    if parsed is None:
+        def find_time(value):
+            if isinstance(value, dict):
+                for key in ("utcTime", "matchTimeUTC", "startTime"):
+                    candidate = _parse_utc(value.get(key))
+                    if candidate is not None:
+                        return candidate
+                for child in value.values():
+                    candidate = find_time(child)
+                    if candidate is not None:
+                        return candidate
+            elif isinstance(value, list):
+                for child in value:
+                    candidate = find_time(child)
+                    if candidate is not None:
+                        return candidate
+            return None
+
+        parsed = find_time(details)
 
     if parsed is None:
         raise RuntimeError(f"Match time unavailable in FotMob matchDetails: {match_id}")
