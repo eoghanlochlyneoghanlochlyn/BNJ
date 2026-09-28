@@ -496,19 +496,51 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
             )
 
     def draw_name(name, left, right):
-        max_w = max(60, right-left)
-        font = _fit_font(draw, name, max_w, [30,28,26,24,22,20,18], True)
-        bbox = draw.textbbox(
-            (0,0), name, font=font,
-            direction="rtl", language="fa",
-        )
-        tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
-        draw.text(
-            ((left+right-tw)/2-bbox[0], mid_y-th/2-bbox[1]),
-            name,
-            font=font, fill=TEXT,
-            direction="rtl", language="fa",
-        )
+        # The wide layout places names beside their logos. Respect the
+        # reserved logo/clock boundaries even for unusually long names.
+        max_w = max(1, right - left)
+        sizes = [30, 28, 26, 24, 22, 20, 18, 16, 14]
+        font = _fit_font(draw, name, max_w, sizes, True)
+        lines = [name]
+        if _text_width(draw, name, font) > max_w and len(name.split()) > 1:
+            words = name.split()
+            candidates = []
+            for size in sizes:
+                candidate_font = _text_font(size, name, True)
+                for split in range(1, len(words)):
+                    first = " ".join(words[:split])
+                    second = " ".join(words[split:])
+                    first_w = _text_width(draw, first, candidate_font)
+                    second_w = _text_width(draw, second, candidate_font)
+                    if max(first_w, second_w) <= max_w:
+                        candidates.append((size, -abs(first_w-second_w), first, second, candidate_font))
+                if candidates:
+                    break
+            if candidates:
+                _, _, first, second, font = max(candidates, key=lambda item: (item[0], item[1]))
+                lines = [first, second]
+        if any(_text_width(draw, line, font) > max_w for line in lines):
+            # Avoid overlap when a single unbreakable name is too wide.
+            # The text is confined to the name's own horizontal region.
+            font = _text_font(14, name, True)
+            lines = [name]
+        bboxes = [
+            draw.textbbox((0, 0), line, font=font, direction="rtl", language="fa")
+            for line in lines
+        ]
+        gap = 5
+        heights = [bbox[3] - bbox[1] for bbox in bboxes]
+        total_h = sum(heights) + gap * (len(lines)-1)
+        top = mid_y - total_h / 2
+        for line, bbox, h in zip(lines, bboxes, heights):
+            tw = bbox[2] - bbox[0]
+            draw.text(
+                ((left + right - tw)/2 - bbox[0], top - bbox[1]),
+                line, font=font, fill=TEXT,
+                direction="rtl", language="fa",
+                stroke_width=0,
+            )
+            top += h + gap
 
     draw_name(home, home_name_left, home_name_right)
     draw_name(away, away_name_left, away_name_right)
