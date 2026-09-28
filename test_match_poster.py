@@ -1,68 +1,125 @@
-"""Generate and send a poster for two explicitly chosen FotMob matches."""
+"""Generate and send a poster for explicitly chosen FotMob matches."""
 import datetime as dt
 from pathlib import Path
 
 import requests
 
-from fotmob import DAILY_MATCHES_URL, HEADERS, _normalize_match, enrich_match_stages
+from config import IRAN_TIMEZONE
+from fotmob import HEADERS, FOTMOB_BASE_URL, _parse_utc, enrich_match_stages
 from renderer import render_fixtures
 from telegram import send_photo
 
 
-MATCHES = [
-    ("6315013", "2026-09-28"),
-    ("5795472", "2026-10-11"),
-    ("6106414", "2026-10-13"),
-    ("6112251", "2026-09-17"),
-    ("6112421", "2026-11-26"),
-    ("5868089", "2026-10-10"),
-    ("5749694", "2026-10-10"),
-    ("5802952", "2026-10-10"),
-    ("5881180", "2026-10-09"),
+MATCH_IDS = [
+    "6315013",
+    "5795472",
+    "6106414",
+    "6112251",
+    "6112421",
+    "5868089",
+    "5749694",
+    "5802952",
+    "5881180",
 ]
 
 
-def get_match(match_id: str, date: str):
-    day = dt.date.fromisoformat(date)
+def get_match(match_id: str) -> dict:
+    response = requests.get(
+        f"{FOTMOB_BASE_URL}/api/data/matchDetails",
+        params={"matchId": match_id},
+        headers=HEADERS,
+        timeout=40,
+    )
+    response.raise_for_status()
+    details = response.json()
 
-    for offset in (-1, 0, 1):
-        date_arg = (day + dt.timedelta(days=offset)).strftime("%Y%m%d")
+    if not isinstance(details, dict):
+        raise RuntimeError(f"Invalid FotMob matchDetails response: {match_id}")
 
-        response = requests.get(
-            DAILY_MATCHES_URL,
-            params={"date": date_arg},
-            headers=HEADERS,
-            timeout=40,
-        )
-        response.raise_for_status()
+    page_props = ((details.get("props") or {}).get("pageProps") or {})
+    content = details.get("content") or page_props.get("content") or {}
+    general = details.get("general") or page_props.get("general") or {}
+    header = details.get("header") or page_props.get("header") or {}
 
-        data = response.json()
+    if not isinstance(content, dict):
+        content = {}
+    if not isinstance(general, dict):
+        general = {}
+    if not isinstance(header, dict):
+        header = {}
 
-        for league in data.get("leagues", []):
-            for raw in league.get("matches", []):
-                raw_id = raw.get("id") or raw.get("matchId")
+    teams = details.get("teams") or content.get("teams") or {}
+    if not isinstance(teams, dict):
+        teams = {}
 
-                if str(raw_id) != match_id:
-                    continue
+    home = teams.get("home") or {}
+    away = teams.get("away") or {}
+    if not isinstance(home, dict):
+        home = {}
+    if not isinstance(away, dict):
+        away = {}
 
-                match = _normalize_match(raw, league)
+    utc_value = (
+        general.get("matchTimeUTC")
+        or general.get("utcTime")
+        or header.get("utcTime")
+        or details.get("utcTime")
+    )
+    parsed = _parse_utc(utc_value)
+    if parsed is None:
+        status = details.get("status") or content.get("status") or {}
+        if isinstance(status, dict):
+            parsed = _parse_utc(status.get("utcTime") or status.get("startTime"))
 
-                if match:
-                    return match
+    if parsed is None:
+        raise RuntimeError(f"Match time unavailable in FotMob matchDetails: {match_id}")
 
-    raise RuntimeError(f"FotMob match not found: {match_id}")
+    league = (
+        general.get("league")
+        or header.get("league")
+        or content.get("league")
+        or details.get("league")
+        or {}
+    )
+    if not isinstance(league, dict):
+        league = {}
+
+    return {
+        "id": str(match_id),
+        "start": parsed.isoformat(),
+        "startIran": parsed.astimezone(IRAN_TIMEZONE).isoformat(),
+        "home": {
+            "id": str(home.get("id") or home.get("teamId") or ""),
+            "name": str(home.get("longName") or home.get("name") or home.get("shortName") or ""),
+        },
+        "away": {
+            "id": str(away.get("id") or away.get("teamId") or ""),
+            "name": str(away.get("longName") or away.get("name") or away.get("shortName") or ""),
+        },
+        "leagueId": str(
+            league.get("id")
+            or league.get("leagueId")
+            or league.get("primaryId")
+            or ""
+        ),
+        "competitionName": str(
+            league.get("name")
+            or league.get("title")
+            or general.get("leagueName")
+            or header.get("leagueName")
+            or ""
+        ),
+        "stage": "",
+        "pageUrl": f"{FOTMOB_BASE_URL}/match/{match_id}",
+    }
 
 
 def main():
-    matches = [
-        get_match(match_id, date)
-        for match_id, date in MATCHES
-    ]
+    matches = [get_match(match_id) for match_id in MATCH_IDS]
 
     enrich_match_stages(matches)
 
     print("Selected matches:")
-
     for match in matches:
         print(
             match["id"],
@@ -77,18 +134,11 @@ def main():
     output_path = Path("output/test-fixtures.png")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    render_fixtures(
-        matches,
-        dt.date.today(),
-        output_path,
-    )
+    render_fixtures(matches, dt.date.today(), output_path)
 
     print(f"Poster generated: {output_path}")
 
-    send_photo(
-        output_path,
-        "🧪 تست پوستر BNJ — مسابقات انتخابی",
-    )
+    send_photo(output_path, "🧪 تست پوستر BNJ — مسابقات انتخابی")
 
     print("Poster sent to Telegram.")
     print("Daily report state was not modified.")
