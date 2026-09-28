@@ -271,7 +271,7 @@ def _match_stage(match: dict) -> str:
     if not text:
         return ""
     low = text.casefold()
-    if low.startswith("matchday") or low.startswith("match week") or low.startswith("week"):
+    if low.startswith(("matchday", "match week", "week", "round")):
         digits = "".join(ch for ch in text if ch.isdigit())
         return f"هفته {_to_persian_digits(digits)}" if digits else text
     if low.startswith("group"):
