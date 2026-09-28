@@ -67,12 +67,12 @@ def score_for(match):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--date", help="Start date of previous-day 09:00 Iran window")
+    parser.add_argument("--date", help="Previous calendar date in Iran")
     parser.add_argument("--output", default="output/results.png")
     parser.add_argument("--send-telegram", action="store_true")
     args = parser.parse_args()
     day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(IRAN_TIMEZONE).date() - dt.timedelta(days=1)
-    selected = select_fixtures(fetch_matches_for_iran_date(day))
+    # Calendar-day results (00:00–24:00 Iran), ready for the 08:00 report.\n    candidates = fetch_matches_for_iran_date(day - dt.timedelta(days=1))\n    candidates += fetch_matches_for_iran_date(day)\n    candidates = [m for m in candidates if dt.datetime.fromisoformat(m["startIran"]).date() == day]\n    selected = select_fixtures(candidates)
     if not selected:
         raise RuntimeError("No qualifying matches; refusing blank results poster.")
     with ThreadPoolExecutor(max_workers=6) as pool:
