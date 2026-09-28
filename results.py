@@ -31,6 +31,8 @@ def score_for(match):
     if not isinstance(status, dict):
         status = {}
     teams = header.get("teams") or details.get("teams") or {}
+    if isinstance(teams, list):
+        teams = {"home": teams[0] if len(teams) > 0 else {}, "away": teams[1] if len(teams) > 1 else {}}
     if not isinstance(teams, dict):
         teams = {}
     home = teams.get("home") or header.get("homeTeam") or {}
