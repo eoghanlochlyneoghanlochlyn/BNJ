@@ -234,72 +234,65 @@ def enrich_match_stages(matches: list[dict]) -> None:
             print(f"[STAGE] {match['id']}: {match.get('stage') or 'unknown'}")
 
 def fetch_matches_for_iran_date(day: dt.date) -> list[dict]:
-    # FotMob's daily endpoint expects YYYYMMDD, not YYYY-MM-DD.
-    date_text = day.strftime("%Y%m%d")
+    """Fetch fixtures from 09:00 Iran time through 09:00 the next day.
 
-    try:
-        response = requests.get(
-            DAILY_MATCHES_URL,
-            params={"date": date_text},
-            headers=HEADERS,
-            timeout=40,
-        )
-        print(
-            f"[FOTMOB] Daily matches {date_text}: "
-            f"HTTP {response.status_code}"
-        )
-        response.raise_for_status()
-        data = response.json()
-    except (requests.RequestException, ValueError) as error:
-        raise RuntimeError(
-            f"FotMob daily matches request failed for {date_text}: {error}"
-        ) from error
-
-    if not isinstance(data, dict):
-        raise RuntimeError("FotMob daily matches response is not a JSON object.")
-
-    leagues = data.get("leagues")
-    if not isinstance(leagues, list):
-        raise RuntimeError(
-            "FotMob daily matches response has no 'leagues' list; "
-            "the response structure may have changed."
-        )
-
+    Fetch both calendar days because FotMob's daily endpoint partitions
+    matches by date, while our reporting window crosses midnight.
+    """
+    window_start = dt.datetime.combine(day, dt.time(9, 0), IRAN_TIMEZONE)
+    window_end = window_start + dt.timedelta(days=1)
     result: list[dict] = []
     seen: set[str] = set()
 
-    for league in leagues:
-        if not isinstance(league, dict):
-            continue
+    for fetch_day in (day, day + dt.timedelta(days=1)):
+        date_text = fetch_day.strftime("%Y%m%d")
+        try:
+            response = requests.get(
+                DAILY_MATCHES_URL,
+                params={"date": date_text},
+                headers=HEADERS,
+                timeout=40,
+            )
+            print(f"[FOTMOB] Daily matches {date_text}: HTTP {response.status_code}")
+            response.raise_for_status()
+            data = response.json()
+        except (requests.RequestException, ValueError) as error:
+            raise RuntimeError(
+                f"FotMob daily matches request failed for {date_text}: {error}"
+            ) from error
 
-        matches = league.get("matches")
-        if not isinstance(matches, list):
-            continue
+        if not isinstance(data, dict) or not isinstance(data.get("leagues"), list):
+            raise RuntimeError(
+                f"FotMob daily matches response for {date_text} has no leagues list."
+            )
 
-        for raw in matches:
-            if not isinstance(raw, dict):
+        leagues = data["leagues"]
+        for league in leagues:
+            if not isinstance(league, dict):
                 continue
-
-            match = _normalize_match(raw, league)
-            if not match:
+            matches = league.get("matches")
+            if not isinstance(matches, list):
                 continue
+            for raw in matches:
+                if not isinstance(raw, dict):
+                    continue
+                match = _normalize_match(raw, league)
+                if not match:
+                    continue
+                start_iran = dt.datetime.fromisoformat(match["startIran"])
+                if not window_start <= start_iran < window_end:
+                    continue
+                match_id = match["id"]
+                if match_id in seen:
+                    continue
+                seen.add(match_id)
+                result.append(match)
 
-            match_id = match["id"]
-            if match_id in seen:
-                continue
-            seen.add(match_id)
-
-            if dt.date.fromisoformat(match["startIran"][:10]) != day:
-                continue
-
-            result.append(match)
+        print(f"[FOTMOB] Checked {date_text}: {len(leagues)} leagues.")
 
     result.sort(key=lambda item: item.get("start") or "")
-
     print(
-        f"[FOTMOB] Parsed {len(result)} matches for Iran date {day.isoformat()} "
-        f"from {len(leagues)} leagues."
+        f"[FOTMOB] Iran window {window_start.isoformat()} to "
+        f"{window_end.isoformat()} (exclusive): {len(result)} matches."
     )
     return result
-
-# validation trigger
