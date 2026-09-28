@@ -139,7 +139,10 @@ def _stage_label(value: Any) -> str:
     if isinstance(value, (int, float)):
         return f"Week {int(value)}"
     if isinstance(value, str):
-        return value.strip()
+        text = value.strip()
+        if text.isdigit():
+            return f"Week {int(text)}"
+        return text
     if isinstance(value, dict):
         for key in ("name", "displayName", "roundName", "groupName", "shortName", "stageName"):
             label = _stage_label(value.get(key))
@@ -187,21 +190,52 @@ def _extract_match_stage(details: dict) -> str:
     for candidate in candidates:
         if not isinstance(candidate, dict):
             continue
-        for key in ("leagueName", "groupName", "group", "matchRound", "leagueRoundName", "roundName", "round", "matchweek",
-                    "matchday", "stage", "stageName"):
+        for key in ("groupName", "group", "matchRound", "leagueRoundName", "roundName", "round", "matchweek",
+                    "matchday", "week", "roundNumber", "stage", "stageName"):
             value = candidate.get(key)
-            if key == "leagueName" and isinstance(value, str):
-                import re
-                match = re.search(r"\bGrp\.\s*([A-Za-z0-9]+)", value, re.I)
-                if match:
-                    return f"Group {match.group(1)}"
             label = _stage_label(value)
             if label:
-                if key in ("matchRound", "leagueRoundName") and label.isdigit():
-                    return f"Week {label}"
                 if key in ("groupName", "group") and not label.lower().startswith("group"):
                     return f"Group {label}"
+                if key in ("matchRound", "leagueRoundName", "roundName", "round", "matchweek", "matchday", "week", "roundNumber"):
+                    if label.isdigit():
+                        return f"Week {label}"
+                    if label.lower().startswith("week"):
+                        return label
                 return label
+
+    # Some FotMob match-details responses store the round several levels
+    # deeper than matchFacts/overview. Search the match-specific payload
+    # recursively, but only for explicit round/week/group keys. Never use
+    # leagueName as a stage: that would incorrectly render "Premier League"
+    # beside the match instead of the actual matchweek.
+    def find_nested_stage(value: Any) -> str:
+        if isinstance(value, dict):
+            for key in ("matchRound", "leagueRoundName", "roundName", "matchweek", "matchday", "week", "round", "roundNumber"):
+                if key in value:
+                    label = _stage_label(value.get(key))
+                    if label:
+                        return label
+            for key in ("groupName", "group"):
+                if key in value:
+                    label = _stage_label(value.get(key))
+                    if label:
+                        return label if label.lower().startswith("group") else f"Group {label}"
+            for child in value.values():
+                label = find_nested_stage(child)
+                if label:
+                    return label
+        elif isinstance(value, list):
+            for child in value:
+                label = find_nested_stage(child)
+                if label:
+                    return label
+        return ""
+
+    nested = find_nested_stage(details)
+    if nested:
+        return nested
+
     return ""
 
 
