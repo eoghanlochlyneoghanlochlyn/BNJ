@@ -10,7 +10,7 @@ on:
       send_telegram:
         description: "Send poster to Telegram"
         type: boolean
-        default: false
+        default: true
   schedule:
     - cron: "30 4 * * *"
 
