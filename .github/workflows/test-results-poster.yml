@@ -1,0 +1,46 @@
+name: BNJ Test Six Historical Results
+
+on:
+  workflow_dispatch:
+    inputs:
+      send_telegram:
+        description: "Publish test results poster to Telegram"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-results:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install fonts and requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core
+          pip install -r requirements.txt
+      - name: Build and publish six-match results poster
+        env:
+          TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
+          TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
+          SEND_TELEGRAM: ${{ inputs.send_telegram }}
+        run: |
+          if [ "$SEND_TELEGRAM" = "true" ]; then
+            python test_results_poster.py --send-telegram
+          else
+            python test_results_poster.py
+          fi
+      - name: Upload preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: six-historical-results
+          path: output/results-test*.png
+          if-no-files-found: warn
+          retention-days: 7
