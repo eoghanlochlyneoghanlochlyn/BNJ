@@ -287,7 +287,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     x1, y1, x2, y2 = box
     home = _team_name(match.get("home"))
     away = _team_name(match.get("away"))
-    kickoff = _kickoff(match)
+    kickoff = match.get('resultLabel') or _kickoff(match)
     stage = _match_stage(match)
 
     if compact:
@@ -684,7 +684,7 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle((MARGIN_X, 36, WIDTH-MARGIN_X, 43), radius=3, fill=(42, 112, 193))
     draw.line((MARGIN_X, HEADER_H-22, WIDTH-MARGIN_X, HEADER_H-22), fill=BORDER, width=2)
-    draw.text((WIDTH - MARGIN_X, 68), "مسابقات امروز", font=_font(56, True), fill=TEXT,
+    draw.text((WIDTH - MARGIN_X, 68), ("نتایج روز قبل" if groups and groups[0][1][0].get("resultLabel") else "مسابقات امروز"), font=_font(56, True), fill=TEXT,
               anchor="ra", direction="rtl", language="fa")
     date_font = _font(25)
     date_parts = _jalali_date(day).split("/")
