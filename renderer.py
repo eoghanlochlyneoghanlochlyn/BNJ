@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import colorsys
+import re
 from collections import OrderedDict
 from pathlib import Path
 
@@ -43,6 +46,8 @@ LOGO_TIMEOUT = 5
 _logo_cache: dict[str, Image.Image | None] = {}
 _team_fa_cache: dict[str, str] | None = None
 TEAMS_FA_URL = "https://raw.githubusercontent.com/eoghanlochlyneoghanlochlyn/Ftbllrslts/main/teams.json"
+
+WORLD_COMPETITION_IDS = {"77": "جام جهانی", "78": "جام جهانی باشگاه‌ها"}
 
 NATIONS_LEAGUE_LEVELS = {
     "9806": "لیگ ملت‌های اروپا A",
@@ -143,6 +148,8 @@ def _competition_name(match: dict) -> str:
         or match.get("tournamentId")
         or ""
     )
+    if competition_id in WORLD_COMPETITION_IDS:
+        return WORLD_COMPETITION_IDS[competition_id]
     if competition_id in NATIONS_LEAGUE_LEVELS:
         return NATIONS_LEAGUE_LEVELS[competition_id]
 
@@ -273,6 +280,23 @@ def _match_stage(match: dict) -> str:
     if not text:
         return ""
     low = text.casefold()
+    # Explicit knockout stages take precedence over generic "Round" handling.
+    normalized = re.sub(r"\\s+", " ", low).strip()
+    knockout = {
+        "1/16": "یک‌شانزدهم نهایی", "1/8": "یک‌هشتم نهایی",
+        "1/4": "یک‌چهارم نهایی", "1/2": "نیمه‌نهایی",
+        "round of 32": "یک‌شانزدهم نهایی", "round of 16": "یک‌هشتم نهایی",
+        "round of 8": "یک‌چهارم نهایی", "quarter-finals": "یک‌چهارم نهایی",
+        "quarterfinals": "یک‌چهارم نهایی", "quarterfinal": "یک‌چهارم نهایی",
+        "semi-finals": "نیمه‌نهایی", "semifinals": "نیمه‌نهایی",
+        "semi-final": "نیمه‌نهایی", "semifinal": "نیمه‌نهایی",
+        "final": "فینال", "finals": "فینال",
+    }
+    normalized = normalized.replace("⅛", "1/8").replace("¼", "1/4").replace("½", "1/2")
+    normalized = re.sub(r"^(?:round|stage)\\s*(?:of\\s*)?", "", normalized).strip()
+    normalized = re.sub(r"\\s*(?:final stage|finals|final)$", "", normalized).strip() if normalized not in knockout else normalized
+    if normalized in knockout:
+        return knockout[normalized]
     if low.startswith(("matchday", "match week", "week", "round")):
         digits = "".join(ch for ch in text if ch.isdigit())
         return f"هفته {_to_persian_digits(digits)}" if digits else text
@@ -630,12 +654,27 @@ def _draw_competition_title(draw, x: int, y: int, competition: str, max_width: i
         return
 
 
+def _competition_accent(match: dict) -> tuple[int, int, int]:
+    """Stable pseudo-random vivid color per numeric competition ID."""
+    key = str(match.get("leagueId") or match.get("competitionId") or match.get("tournamentId") or _competition_name(match))
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    hue = int.from_bytes(digest[:4], "big") / 2**32
+    saturation = 0.55 + digest[4] / 255 * 0.19
+    lightness = 0.49 + digest[5] / 255 * 0.09
+    return tuple(round(v * 255) for v in colorsys.hls_to_rgb(hue, lightness, saturation))
+
+
+def _competition_group_key(match: dict) -> tuple[str, str]:
+    competition_id = str(match.get("leagueId") or match.get("competitionId") or match.get("tournamentId") or "")
+    return competition_id, _competition_name(match)
+
+
 def _draw_competition_box(image, draw, x1, y1, x2, matches, competition, compact=False):
     header_h = 58 if compact else 64
     row_h = COMPACT_MATCH_ROW_H if compact else MATCH_ROW_H
     box_h = header_h + len(matches) * row_h + max(0, len(matches)-1)
     y2 = y1 + box_h
-    accent = COMPETITION_ACCENTS.get(competition, ACCENT)
+    accent = _competition_accent(matches[0])
     draw.rounded_rectangle((x1,y1,x2,y2), radius=CARD_RADIUS, fill=CARD, outline=BORDER, width=2)
     draw.rounded_rectangle((x1+12,y1+13,x1+19,y1+header_h-12), radius=3, fill=accent)
     draw.rounded_rectangle((x1+29,y1+9,x2-12,y1+header_h-7), radius=12, fill=(26, 42, 65))
@@ -656,8 +695,8 @@ def _draw_card(image, draw, box, match, compact):
 def _group_matches(matches):
     groups = OrderedDict()
     for match in matches:
-        groups.setdefault(_competition_name(match), []).append(match)
-    return list(groups.items())
+        groups.setdefault(_competition_group_key(match), []).append(match)
+    return [(name, items) for (_id, name), items in groups.items()]
 
 
 def _render_page(groups, day, page_no, page_total, output, cards_per_row):
