@@ -1,0 +1,77 @@
+name: BNJ Previous Day Results
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Iran window start date YYYY-MM-DD; default yesterday"
+        required: false
+        type: string
+      send_telegram:
+        description: "Send poster to Telegram"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "30 4 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bnj-football-reports
+  cancel-in-progress: false
+
+jobs:
+  results:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install fonts and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core
+          pip install -r requirements.txt
+      - name: Generate results
+        env:
+          TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
+          TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
+          SEND_TELEGRAM: ${{ github.event_name == 'schedule' || inputs.send_telegram }}
+          REPORT_DATE: ${{ inputs.date }}
+        run: |
+          ARGS=()
+          if [ -n "$REPORT_DATE" ]; then ARGS+=(--date "$REPORT_DATE"); fi
+          if [ "$SEND_TELEGRAM" = "true" ]; then ARGS+=(--send-telegram); fi
+          python results.py "${ARGS[@]}"
+      - name: Validate images
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          paths = sorted(Path("output").glob("results*.png"))
+          if not paths: raise SystemExit("No results images")
+          for path in paths:
+              with Image.open(path) as image:
+                  image.verify()
+              print("Valid:", path)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bnj-results-preview
+          path: output/results*.png
+          if-no-files-found: error
+          retention-days: 7
+      - name: Persist sent report state
+        if: ${{ github.event_name == 'schedule' || inputs.send_telegram }}
+        run: |
+          if git diff --quiet -- report_state.json; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add report_state.json
+          git commit -m "Persist results report state"
+          git pull --rebase origin main
+          git push
