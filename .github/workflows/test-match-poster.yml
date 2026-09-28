@@ -1,40 +1,61 @@
 name: Test selected match poster
+
 on:
   workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   poster:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Install fonts
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-noto-core
+
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
-      - name: Generate selected-match poster
-        run: python test_match_poster.py
-      - name: Verify preview image
+        run: |
+          pip install -r requirements.txt
+
+      - name: Generate and send selected-match poster
+        env:
+          TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
+          TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
+        run: |
+          python test_match_poster.py
+
+      - name: Verify generated image
         run: |
           python - <<'PY'
           from pathlib import Path
           from PIL import Image
-          paths = sorted(Path("output").glob("test-fixtures*.png"))
-          assert paths, "No poster generated"
-          for path in paths:
-              with Image.open(path) as image:
-                  image.verify()
-              print("Verified", path)
+
+          path = Path("output/test-fixtures.png")
+
+          if not path.exists():
+              raise SystemExit("Poster was not generated.")
+
+          with Image.open(path) as image:
+              image.verify()
+
+          print(f"Verified poster: {path}")
           PY
+
       - name: Upload preview
         uses: actions/upload-artifact@v4
         with:
           name: bnj-selected-matches-preview
-          path: output/test-fixtures*.png
+          path: output/test-fixtures.png
           if-no-files-found: error
           retention-days: 7
