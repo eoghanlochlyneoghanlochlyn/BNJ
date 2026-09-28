@@ -291,8 +291,12 @@ def _match_stage(match: dict) -> str:
         "semi-finals": "نیمه‌نهایی", "semifinals": "نیمه‌نهایی",
         "semi-final": "نیمه‌نهایی", "semifinal": "نیمه‌نهایی",
         "final": "فینال", "finals": "فینال",
+        "16": "یک‌هشتم نهایی", "32": "یک‌شانزدهم نهایی",
+        "8": "یک‌چهارم نهایی", "4": "نیمه‌نهایی",
     }
     normalized = normalized.replace("⅛", "1/8").replace("¼", "1/4").replace("½", "1/2")
+    if normalized in knockout:
+        return knockout[normalized]
     normalized = re.sub(r"^(?:round|stage)\\s*(?:of\\s*)?", "", normalized).strip()
     normalized = re.sub(r"\\s*(?:final stage|finals|final)$", "", normalized).strip() if normalized not in knockout else normalized
     if normalized in knockout:
