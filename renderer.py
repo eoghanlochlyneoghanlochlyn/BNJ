@@ -62,6 +62,7 @@ COMPETITION_FA = {
     "European Championship": "جام ملت‌های اروپا", "World Cup": "جام جهانی",
     "World Cup Qualifiers": "انتخابی جام جهانی", "Nations League": "لیگ ملت‌های اروپا",
     "Copa America": "کوپا آمریکا", "Copa Libertadores": "کوپا لیبرتادورس",
+    "Friendlies": "بازی دوستانه", "Friendly": "بازی دوستانه",
     "AFC Champions League Elite": "لیگ نخبگان آسیا", "AFC Champions League Two": "لیگ قهرمانان آسیا ۲",
 }
 
@@ -196,9 +197,22 @@ def _text_width(draw, text: str, font, direction: str = "rtl") -> float:
     return draw.textlength(text, font=font, direction=direction, language="fa" if direction == "rtl" else None)
 
 
+def _contains_persian(text: str) -> bool:
+    return any(
+        "\u0600" <= ch <= "\u06ff"
+        or "\u0750" <= ch <= "\u077f"
+        or "\u08a0" <= ch <= "\u08ff"
+        for ch in str(text)
+    )
+
+
+def _text_font(size: int, text: str, bold: bool = False):
+    return _font(size, bold) if _contains_persian(text) else _latin_font(size, bold)
+
+
 def _fit_font(draw, text: str, max_width: int, sizes: list[int], bold: bool):
     for size in sizes:
-        font = _font(size, bold)
+        font = _text_font(size, text, bold)
         if _text_width(draw, text, font) <= max_width:
             return font
     return _font(sizes[-1], bold)
@@ -262,6 +276,8 @@ def _match_stage(match: dict) -> str:
         return f"هفته {_to_persian_digits(digits)}" if digits else text
     if low.startswith("group"):
         return f"گروه {text.split()[-1]}"
+    if low in {"friendlies", "friendly"}:
+        return "دوستانه"
     return text
 
 
