@@ -52,14 +52,46 @@ def score_for(match):
     if h is None or a is None:
         raise RuntimeError("Final score missing: " + match["id"])
     label = f"{h} - {a}"
+    # FotMob's header normally stores the score before the shootout.
+    # Shootout kicks are represented in matchFacts events with
+    # isPenaltyShootoutEvent=True; count only successful shootout goals.
     penalty = status.get("penalties") or status.get("penaltyScore") or {}
-    if not isinstance(penalty, dict): penalty = {}
+    if not isinstance(penalty, dict):
+        penalty = {}
     ph = number(home.get("penaltyScore"))
     pa = number(away.get("penaltyScore"))
-    if ph is None: ph = number(penalty.get("home"))
-    if ph is None: ph = number(home.get("penalties"))
-    if pa is None: pa = number(penalty.get("away"))
-    if pa is None: pa = number(away.get("penalties"))
+    if ph is None:
+        ph = number(penalty.get("home"))
+    if ph is None:
+        ph = number(home.get("penalties"))
+    if pa is None:
+        pa = number(penalty.get("away"))
+    if pa is None:
+        pa = number(away.get("penalties"))
+
+    if ph is None or pa is None:
+        reason = status.get("reason") or {}
+        reason_key = str(reason.get("shortKey") or reason.get("longKey") or "").lower()
+        reason_short = str(reason.get("short") or "").lower()
+        after_penalties = "penalt" in reason_key or reason_short in {"pen", "pens", "ap"}
+
+        if after_penalties:
+            content = details.get("content") or {}
+            facts = content.get("matchFacts") or {}
+            events_block = facts.get("events") or {}
+            events = events_block.get("events") if isinstance(events_block, dict) else None
+            if not isinstance(events, list):
+                events = []
+            shootout_goals = [
+                event for event in events
+                if isinstance(event, dict)
+                and event.get("isPenaltyShootoutEvent") is True
+                and str(event.get("type") or "").lower() == "goal"
+            ]
+            if shootout_goals:
+                ph = sum(1 for event in shootout_goals if event.get("isHome") is True)
+                pa = sum(1 for event in shootout_goals if event.get("isHome") is False)
+
     if ph is not None and pa is not None:
         label += f" ({ph} - {pa})"
     match["resultLabel"] = label.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
