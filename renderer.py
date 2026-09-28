@@ -443,7 +443,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
         draw_compact_name(away, int(away_x))
 
         # Clock stays centered between the two team blocks.
-        time_font = _font(20 if '(' in kickoff else 24, True)
+        time_font = _font(22 if '(' in kickoff else 27, True)
         clock_width = 190 if match.get('resultLabel') and '(' in kickoff else 126
         clock_h = 42
         draw.rounded_rectangle(
@@ -573,7 +573,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     draw_name(home, home_name_left, home_name_right)
     draw_name(away, away_name_left, away_name_right)
 
-    time_font = _font(23 if '(' in kickoff else 29, True)
+    time_font = _font(25 if '(' in kickoff else 32, True)
     draw.rounded_rectangle(
         (mid_x-clock_width//2, mid_y-24,
          mid_x+clock_width//2, mid_y+24),
@@ -663,8 +663,9 @@ def _competition_accent(match: dict) -> tuple[int, int, int]:
     key = str(match.get("leagueId") or match.get("competitionId") or match.get("tournamentId") or _competition_name(match))
     digest = hashlib.sha256(key.encode("utf-8")).digest()
     hue = int.from_bytes(digest[:4], "big") / 2**32
-    saturation = 0.55 + digest[4] / 255 * 0.19
-    lightness = 0.49 + digest[5] / 255 * 0.09
+    saturation = 0.62 + digest[4] / 255 * 0.18
+    # Keep accents dark enough that white text remains readable.
+    lightness = 0.36 + digest[5] / 255 * 0.09
     return tuple(round(v * 255) for v in colorsys.hls_to_rgb(hue, lightness, saturation))
 
 
