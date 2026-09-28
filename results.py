@@ -9,7 +9,7 @@ from config import IRAN_TIMEZONE
 from fotmob import fetch_matches_for_iran_date, HEADERS, FOTMOB_BASE_URL, _extract_match_stage
 from selector import select_fixtures
 from renderer import render_fixtures
-from telegram import send_photos
+from telegram import send_photos, send_photo
 from report_state import load_state, already_sent, mark_sent
 
 
@@ -72,7 +72,11 @@ def main():
     parser.add_argument("--send-telegram", action="store_true")
     args = parser.parse_args()
     day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(IRAN_TIMEZONE).date() - dt.timedelta(days=1)
-    # Calendar-day results (00:00–24:00 Iran), ready for the 08:00 report.\n    candidates = fetch_matches_for_iran_date(day - dt.timedelta(days=1))\n    candidates += fetch_matches_for_iran_date(day)\n    candidates = [m for m in candidates if dt.datetime.fromisoformat(m["startIran"]).date() == day]\n    selected = select_fixtures(candidates)
+    # Calendar-day results (00:00–24:00 Iran), ready for the 08:00 report.
+    candidates = fetch_matches_for_iran_date(day - dt.timedelta(days=1))
+    candidates += fetch_matches_for_iran_date(day)
+    candidates = [m for m in candidates if dt.datetime.fromisoformat(m["startIran"]).date() == day]
+    selected = select_fixtures(candidates)
     if not selected:
         raise RuntimeError("No qualifying matches; refusing blank results poster.")
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -88,7 +92,11 @@ def main():
         state = load_state()
         key = "results:" + day.isoformat()
         if not already_sent(state, key):
-            send_photos(paths, "🏁 نتایج روز قبل | " + day.isoformat())
+            caption = "🏁 نتایج روز قبل | " + day.isoformat()
+            if len(paths) == 1:
+                send_photo(paths[0], caption)
+            else:
+                send_photos(paths, caption)
             mark_sent(state, key)
     print("Generated", len(paths), "results page(s)")
 
