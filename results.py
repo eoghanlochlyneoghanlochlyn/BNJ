@@ -1,6 +1,7 @@
 """Previous-day results, using the same selection and poster renderer as fixtures."""
 import argparse
 import datetime as dt
+import json
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import requests
@@ -11,6 +12,173 @@ from selector import select_fixtures
 from renderer import render_fixtures
 from telegram import send_photos, send_photo
 from report_state import load_state, already_sent, mark_sent
+
+
+
+def _coerce_score_pair(value):
+    if isinstance(value, dict):
+        h = value.get("home", value.get("homeScore"))
+        a = value.get("away", value.get("awayScore"))
+        try:
+            if h is not None and a is not None:
+                return {"home": int(h), "away": int(a)}
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, (list, tuple)) and len(value) >= 2:
+        try:
+            return {"home": int(value[0]), "away": int(value[1])}
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, str):
+        import re
+        m = re.search(r"(\\d+)\\s*[-:]\\s*(\\d+)", value)
+        if m:
+            return {"home": int(m.group(1)), "away": int(m.group(2))}
+    return None
+
+
+def _shootout_marker(node):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            compact = str(value).lower().replace(" ", "").replace("_", "").replace("-", "")
+            if "penaltyshootout" in compact or compact == "shootout":
+                return True
+            if key in ("isPenaltyShootoutEvent",) and value is True:
+                return True
+            if isinstance(value, (dict, list)) and _shootout_marker(value):
+                return True
+    elif isinstance(node, list):
+        return any(_shootout_marker(x) for x in node)
+    return False
+
+
+def _shootout_sections(node, result=None):
+    if result is None:
+        result = []
+    keys = ("penaltyShootout", "penalty_shootout", "shootout",
+            "penaltyShootoutEvents", "penalty_shootout_events")
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in keys and isinstance(value, (dict, list)):
+                result.append(value)
+                _shootout_sections(value, result)
+            elif isinstance(value, (dict, list)):
+                _shootout_sections(value, result)
+    elif isinstance(node, list):
+        for value in node:
+            if isinstance(value, (dict, list)):
+                _shootout_sections(value, result)
+    return result
+
+
+def _event_lists(node):
+    result = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in ("events", "list") and isinstance(value, list):
+                result.append(value)
+            elif isinstance(value, (dict, list)):
+                result.extend(_event_lists(value))
+    elif isinstance(node, list):
+        for value in node:
+            if isinstance(value, (dict, list)):
+                result.extend(_event_lists(value))
+    return result
+
+
+def _shootout_score(details):
+    content = details.get("content") or {}
+    if not isinstance(content, dict):
+        return None
+
+    for key in ("penaltyScore", "penalty_score", "shootoutScore", "shootout_score"):
+        if key in content:
+            result = _coerce_score_pair(content.get(key))
+            if result:
+                return result
+
+    sections = _shootout_sections(content)
+    facts = content.get("matchFacts")
+    if isinstance(facts, dict):
+        sections.extend(_shootout_sections(facts))
+
+    for section in sections:
+        for key in ("penaltyScore", "penalty_score", "shootoutScore", "shootout_score"):
+            if isinstance(section, dict) and key in section:
+                result = _coerce_score_pair(section.get(key))
+                if result:
+                    return result
+        if isinstance(section, dict) and isinstance(section.get("penalties"), dict):
+            result = _coerce_score_pair(section["penalties"])
+            if result:
+                return result
+
+    header = details.get("header") or {}
+    teams = header.get("teams") or {}
+    if not isinstance(teams, dict):
+        teams = {}
+    home = teams.get("home") or {}
+    away = teams.get("away") or {}
+    home_id = home.get("id")
+    away_id = away.get("id")
+
+    seen = set()
+    hs = 0
+    aws = 0
+    found = False
+
+    def fingerprint(event):
+        keys = ("teamId", "isHome", "playerId", "playerName", "minute", "time",
+                "period", "isScored", "scored", "converted", "successful",
+                "success", "description", "eventType", "incidentType")
+        return tuple((key, json.dumps(event.get(key), ensure_ascii=False, sort_keys=True, default=str)
+                      if isinstance(event.get(key), (dict, list)) else str(event.get(key)))
+                     for key in keys)
+
+    for events in _event_lists(sections):
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            marker = str(event.get("type") or event.get("eventType") or event.get("incidentType") or "").lower()
+            if not (event.get("isPenaltyShootoutEvent") is True or "penaltyshootout" in marker or marker == "shootout"):
+                continue
+            key = fingerprint(event)
+            if key in seen:
+                continue
+            seen.add(key)
+            found = True
+
+            scored = None
+            for field in ("isGoal", "isScored", "scored", "converted", "success", "successful"):
+                if isinstance(event.get(field), bool):
+                    scored = event[field]
+                    break
+            text = " ".join(str(event.get(k, "")) for k in
+                            ("type", "eventType", "incidentType", "incidentClass", "description", "reason")).lower()
+            if any(word in text for word in ("miss", "saved", "save", "off target", "woodwork")):
+                scored = False
+            if scored is False:
+                continue
+            if scored is None:
+                scored = True
+            if not scored:
+                continue
+
+            team_id = event.get("teamId")
+            is_home = event.get("isHome")
+            if team_id is not None:
+                if str(team_id) == str(home_id):
+                    is_home = True
+                elif str(team_id) == str(away_id):
+                    is_home = False
+            if is_home is True:
+                hs += 1
+            elif is_home is False:
+                aws += 1
+
+    if found and (hs or aws):
+        return {"home": hs, "away": aws}
+    return None
 
 
 def number(value):
@@ -55,45 +223,10 @@ def score_for(match):
     # FotMob's header normally stores the score before the shootout.
     # Shootout kicks are represented in matchFacts events with
     # isPenaltyShootoutEvent=True; count only successful shootout goals.
-    penalty = status.get("penalties") or status.get("penaltyScore") or {}
-    if not isinstance(penalty, dict):
-        penalty = {}
-    ph = number(home.get("penaltyScore"))
-    pa = number(away.get("penaltyScore"))
-    if ph is None:
-        ph = number(penalty.get("home"))
-    if ph is None:
-        ph = number(home.get("penalties"))
-    if pa is None:
-        pa = number(penalty.get("away"))
-    if pa is None:
-        pa = number(away.get("penalties"))
+    penalty_score = _shootout_score(details)
+    if penalty_score is not None:
+        label += f" ({penalty_score['home']} - {penalty_score['away']})"
 
-    if ph is None or pa is None:
-        reason = status.get("reason") or {}
-        reason_key = str(reason.get("shortKey") or reason.get("longKey") or "").lower()
-        reason_short = str(reason.get("short") or "").lower()
-        after_penalties = "penalt" in reason_key or reason_short in {"pen", "pens", "ap"}
-
-        if after_penalties:
-            content = details.get("content") or {}
-            facts = content.get("matchFacts") or {}
-            events_block = facts.get("events") or {}
-            events = events_block.get("events") if isinstance(events_block, dict) else None
-            if not isinstance(events, list):
-                events = []
-            shootout_goals = [
-                event for event in events
-                if isinstance(event, dict)
-                and event.get("isPenaltyShootoutEvent") is True
-                and str(event.get("type") or "").lower() == "goal"
-            ]
-            if shootout_goals:
-                ph = sum(1 for event in shootout_goals if event.get("isHome") is True)
-                pa = sum(1 for event in shootout_goals if event.get("isHome") is False)
-
-    if ph is not None and pa is not None:
-        label += f" ({ph} - {pa})"
     match["resultLabel"] = label.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
     stage = _extract_match_stage(details)
     if stage: match["stage"] = stage
