@@ -289,10 +289,185 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     away = _team_name(match.get("away"))
     kickoff = _kickoff(match)
     stage = _match_stage(match)
-    mid_y = (y1 + y2) // 2
 
-    stage_width = 160 if compact else 180
-    logo_size = 58 if compact else 66
+    if compact:
+        # In the narrow two-column layout, keep the three important elements
+        # in separate horizontal bands: stage, time/logos, and team names.
+        # This prevents long names from ever colliding with a logo or clock.
+        mid_x = (x1 + x2) // 2
+        width = x2 - x1
+        home_x = x1 + width * 0.28
+        away_x = x1 + width * 0.72
+        logo_y = y1 + 42
+        name_y = y1 + 91
+
+        logo_size = 48
+        for team_id, logo_x in (
+            (_team_id(match.get("home")), int(home_x)),
+            (_team_id(match.get("away")), int(away_x)),
+        ):
+            logo = _load_logo(team_id)
+            if logo is not None:
+                logo.thumbnail((logo_size, logo_size), Image.Resampling.LANCZOS)
+                _paste_logo(image, logo, (logo_x, logo_y))
+            else:
+                r = 22
+                draw.ellipse(
+                    (logo_x-r, logo_y-r, logo_x+r, logo_y+r),
+                    fill=(45, 63, 86),
+                )
+
+        def draw_compact_name(name, center_x):
+            max_w = int(width * 0.30)
+            sizes = [22, 20, 18, 16, 15, 14]
+            font = _fit_font(draw, name, max_w, sizes, True)
+
+            if _text_width(draw, name, font) <= max_w:
+                bbox = draw.textbbox(
+                    (0, 0), name, font=font,
+                    direction="rtl", language="fa",
+                )
+                tw = bbox[2] - bbox[0]
+                th = bbox[3] - bbox[1]
+                draw.text(
+                    (center_x - tw/2 - bbox[0], name_y - th/2 - bbox[1]),
+                    name,
+                    font=font,
+                    fill=TEXT,
+                    direction="rtl",
+                    language="fa",
+                )
+                return
+
+            words = name.split()
+            if len(words) > 1:
+                best = None
+                best_score = None
+                for split in range(1, len(words)):
+                    line1 = " ".join(words[:split])
+                    line2 = " ".join(words[split:])
+                    if (
+                        _text_width(draw, line1, font) <= max_w
+                        and _text_width(draw, line2, font) <= max_w
+                    ):
+                        score = abs(
+                            _text_width(draw, line1, font)
+                            - _text_width(draw, line2, font)
+                        )
+                        if best_score is None or score < best_score:
+                            best = (line1, line2)
+                            best_score = score
+
+                if best:
+                    line1, line2 = best
+                    gap = 2
+                    b1 = draw.textbbox(
+                        (0, 0), line1, font=font,
+                        direction="rtl", language="fa",
+                    )
+                    b2 = draw.textbbox(
+                        (0, 0), line2, font=font,
+                        direction="rtl", language="fa",
+                    )
+                    h1 = b1[3] - b1[1]
+                    h2 = b2[3] - b2[1]
+                    total_h = h1 + gap + h2
+                    top = name_y - total_h / 2
+                    for line, bbox, h in (
+                        (line1, b1, h1),
+                        (line2, b2, h2),
+                    ):
+                        tw = bbox[2] - bbox[0]
+                        cy = top + h / 2
+                        draw.text(
+                            (center_x - tw/2 - bbox[0], cy - bbox[1]),
+                            line,
+                            font=font,
+                            fill=TEXT,
+                            direction="rtl",
+                            language="fa",
+                        )
+                        top += h + gap
+                    return
+
+            # Last resort: progressively reduce the font until the complete
+            # name fits. Characters are never discarded.
+            for size in reversed(sizes):
+                candidate = _text_font(size, name, True)
+                if _text_width(draw, name, candidate) <= max_w:
+                    bbox = draw.textbbox(
+                        (0, 0), name, font=candidate,
+                        direction="rtl", language="fa",
+                    )
+                    tw = bbox[2] - bbox[0]
+                    th = bbox[3] - bbox[1]
+                    draw.text(
+                        (center_x - tw/2 - bbox[0], name_y - th/2 - bbox[1]),
+                        name,
+                        font=candidate,
+                        fill=TEXT,
+                        direction="rtl",
+                        language="fa",
+                    )
+                    return
+
+        draw_compact_name(home, int(home_x))
+        draw_compact_name(away, int(away_x))
+
+        # Clock stays centered between the two team blocks.
+        time_font = _font(24, True)
+        clock_width = 126
+        clock_h = 42
+        draw.rounded_rectangle(
+            (
+                mid_x - clock_width//2,
+                y1 + 40,
+                mid_x + clock_width//2,
+                y1 + 40 + clock_h,
+            ),
+            radius=11,
+            fill=accent,
+        )
+        bbox = draw.textbbox(
+            (0, 0), kickoff, font=time_font,
+            direction="rtl", language="fa",
+        )
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        draw.text(
+            (mid_x - tw/2 - bbox[0], y1 + 40 + clock_h/2 - th/2 - bbox[1]),
+            kickoff,
+            font=time_font,
+            fill=(255, 255, 255),
+            direction="rtl",
+            language="fa",
+        )
+
+        if stage:
+            stage_font = _fit_font(
+                draw, stage, width - 40,
+                [17, 15, 14, 13, 12], True,
+            )
+            bbox = draw.textbbox(
+                (0, 0), stage, font=stage_font,
+                direction="rtl", language="fa",
+            )
+            tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
+            draw.text(
+                (mid_x - tw/2 - bbox[0], y1 + 15 - th/2 - bbox[1]),
+                stage,
+                font=stage_font,
+                fill=MUTED,
+                direction="rtl",
+                language="fa",
+            )
+        return
+
+    # Original wide single-column layout.
+    mid_y = (y1 + y2) // 2
+    stage_width = 180
+    logo_size = 66
     clock_width = 154
     content_left = x1 + 25
     content_right = x2 - stage_width - 20
@@ -306,103 +481,71 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     away_name_left = mid_x + clock_width//2 + clock_gap
     away_name_right = right_logo_x - logo_size//2 - name_gap
 
-    for team_id, logo_x in ((_team_id(match.get("home")), left_logo_x),
-                            (_team_id(match.get("away")), right_logo_x)):
+    for team_id, logo_x in (
+        (_team_id(match.get("home")), left_logo_x),
+        (_team_id(match.get("away")), right_logo_x),
+    ):
         logo = _load_logo(team_id)
         if logo is not None:
             logo.thumbnail((logo_size, logo_size), Image.Resampling.LANCZOS)
             _paste_logo(image, logo, (logo_x, mid_y))
         else:
-            draw.ellipse((logo_x-27,mid_y-27,logo_x+27,mid_y+27), fill=(45,63,86))
+            draw.ellipse(
+                (logo_x-27, mid_y-27, logo_x+27, mid_y+27),
+                fill=(45,63,86),
+            )
 
     def draw_name(name, left, right):
         max_w = max(60, right-left)
-        sizes = [26,24,22,20,18,16] if compact else [30,28,26,24,22,20,18]
-        font = _fit_font(draw, name, max_w, sizes, True)
-
-        # Never cut a long team name with an ellipsis. In the compact
-        # two-column layout, split it into at most two centered lines.
-        if _text_width(draw, name, font) > max_w:
-            words = name.split()
-            if len(words) > 1:
-                best = None
-                best_score = None
-                for split in range(1, len(words)):
-                    line1 = " ".join(words[:split])
-                    line2 = " ".join(words[split:])
-                    w1 = _text_width(draw, line1, font)
-                    w2 = _text_width(draw, line2, font)
-                    if w1 <= max_w and w2 <= max_w:
-                        score = abs(w1 - w2)
-                        if best_score is None or score < best_score:
-                            best = (line1, line2)
-                            best_score = score
-                if best:
-                    line1, line2 = best
-                    line_gap = 4
-                    b1 = draw.textbbox((0,0), line1, font=font, direction="rtl", language="fa")
-                    b2 = draw.textbbox((0,0), line2, font=font, direction="rtl", language="fa")
-                    h1 = b1[3] - b1[1]
-                    h2 = b2[3] - b2[1]
-                    total_h = h1 + line_gap + h2
-                    y1 = mid_y - total_h / 2
-                    for line, bbox, h in ((line1, b1, h1), (line2, b2, h2)):
-                        tw = bbox[2] - bbox[0]
-                        cy = y1 + h / 2
-                        draw.text(
-                            ((left + right - tw) / 2 - bbox[0], cy - bbox[1]),
-                            line,
-                            font=font,
-                            fill=TEXT,
-                            direction="rtl",
-                            language="fa",
-                        )
-                        y1 += h + line_gap
-                    return
-
-            # If even two lines cannot fit, reduce the font rather than
-            # dropping characters.
-            for size in sizes:
-                candidate = _text_font(size, name, True)
-                if _text_width(draw, name, candidate) <= max_w:
-                    font = candidate
-                    break
-
-        bbox = draw.textbbox((0,0), name, font=font, direction="rtl", language="fa")
+        font = _fit_font(draw, name, max_w, [30,28,26,24,22,20,18], True)
+        bbox = draw.textbbox(
+            (0,0), name, font=font,
+            direction="rtl", language="fa",
+        )
         tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
         draw.text(
             ((left+right-tw)/2-bbox[0], mid_y-th/2-bbox[1]),
             name,
-            font=font,
-            fill=TEXT,
-            direction="rtl",
-            language="fa",
+            font=font, fill=TEXT,
+            direction="rtl", language="fa",
         )
 
-    draw_name(home,home_name_left,home_name_right)
-    draw_name(away,away_name_left,away_name_right)
+    draw_name(home, home_name_left, home_name_right)
+    draw_name(away, away_name_left, away_name_right)
 
-    time_font = _font(25 if compact else 29, True)
-    draw.rounded_rectangle((mid_x-clock_width//2,mid_y-24,
-                            mid_x+clock_width//2,mid_y+24),
-                           radius=12 if compact else 14,fill=accent)
-    bbox = draw.textbbox((0,0),kickoff,font=time_font,
-                         direction="rtl",language="fa")
-    tw,th = bbox[2]-bbox[0],bbox[3]-bbox[1]
-    draw.text((mid_x-tw/2-bbox[0],mid_y-th/2-bbox[1]),
-              kickoff,font=time_font,fill=(255,255,255),
-              direction="rtl",language="fa")
+    time_font = _font(29, True)
+    draw.rounded_rectangle(
+        (mid_x-clock_width//2, mid_y-24,
+         mid_x+clock_width//2, mid_y+24),
+        radius=14, fill=accent,
+    )
+    bbox = draw.textbbox(
+        (0,0), kickoff, font=time_font,
+        direction="rtl", language="fa",
+    )
+    tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
+    draw.text(
+        (mid_x-tw/2-bbox[0], mid_y-th/2-bbox[1]),
+        kickoff, font=time_font, fill=(255,255,255),
+        direction="rtl", language="fa",
+    )
 
     if stage:
-        stage_font = _fit_font(draw,stage,stage_width-20,([18,16,14,12] if compact else [22,20,18,16,14]),True)
-        bbox = draw.textbbox((0,0),stage,font=stage_font,
-                             direction="rtl",language="fa")
-        tw,th=bbox[2]-bbox[0],bbox[3]-bbox[1]
-        stage_x=x2-stage_width//2
-        draw.text((stage_x-tw/2-bbox[0],mid_y-th/2-bbox[1]),
-                  stage,font=stage_font,fill=MUTED,
-                  direction="rtl",language="fa")
-
+        stage_font = _fit_font(
+            draw, stage, stage_width-20,
+            [22,20,18,16,14], True,
+        )
+        bbox = draw.textbbox(
+            (0,0), stage, font=stage_font,
+            direction="rtl", language="fa",
+        )
+        tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
+        stage_x = x2-stage_width//2
+        draw.text(
+            (stage_x-tw/2-bbox[0], mid_y-th/2-bbox[1]),
+            stage, font=stage_font, fill=MUTED,
+            direction="rtl", language="fa",
+        )
 
 def _draw_competition_title(draw, x: int, y: int, competition: str, max_width: int):
     """Render Persian competition text with a Latin-capable font for A/B/C/D."""
