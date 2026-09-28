@@ -7,7 +7,7 @@ import requests
 from config import IRAN_TIMEZONE
 from fotmob import HEADERS, FOTMOB_BASE_URL, _parse_utc, enrich_match_stages
 from renderer import render_fixtures
-from telegram import send_photo
+from telegram import send_photos
 
 
 MATCH_IDS = [
@@ -220,13 +220,12 @@ def main():
     for page_path in generated_paths:
         print(page_path)
 
-    for index, page_path in enumerate(generated_paths, start=1):
-        send_photo(
-            page_path,
-            f"🧪 تست پوستر BNJ — مسابقات انتخابی | صفحه {index}/{len(generated_paths)}",
-        )
+    send_photos(
+        generated_paths,
+        "🧪 تست پوستر BNJ — مسابقات انتخابی",
+    )
 
-    print(f"Sent {len(generated_paths)} poster page(s) to Telegram.")
+    print(f"Sent {len(generated_paths)} poster page(s) as one Telegram album.")
     print("Daily report state was not modified.")
 
 
