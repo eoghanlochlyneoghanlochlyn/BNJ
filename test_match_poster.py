@@ -52,12 +52,54 @@ def get_match(match_id: str) -> dict:
     if not isinstance(teams, dict):
         teams = {}
 
-    home = teams.get("home") or {}
-    away = teams.get("away") or {}
-    if not isinstance(home, dict):
-        home = {}
-    if not isinstance(away, dict):
-        away = {}
+    def team_from(value):
+        if not isinstance(value, dict):
+            return {}
+        return {
+            "id": value.get("id") or value.get("teamId") or value.get("teamID") or "",
+            "name": (
+                value.get("longName")
+                or value.get("name")
+                or value.get("shortName")
+                or value.get("title")
+                or ""
+            ),
+        }
+
+    home = team_from(teams.get("home") or teams.get("homeTeam") or header.get("homeTeam"))
+    away = team_from(teams.get("away") or teams.get("awayTeam") or header.get("awayTeam"))
+
+    def find_side(value, side):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                key_low = str(key).casefold()
+                if side == "home" and key_low in {"hometeam", "home_team", "home"}:
+                    candidate = team_from(child)
+                    if candidate["id"] or candidate["name"]:
+                        return candidate
+                if side == "away" and key_low in {"awayteam", "away_team", "away"}:
+                    candidate = team_from(child)
+                    if candidate["id"] or candidate["name"]:
+                        return candidate
+                candidate = find_side(child, side)
+                if candidate:
+                    return candidate
+        elif isinstance(value, list):
+            for child in value:
+                candidate = find_side(child, side)
+                if candidate:
+                    return candidate
+        return {}
+
+    if not home.get("id") and not home.get("name"):
+        home = find_side(details, "home")
+    if not away.get("id") and not away.get("name"):
+        away = find_side(details, "away")
+
+    if not home.get("id") and not home.get("name"):
+        raise RuntimeError(f"Home team unavailable in FotMob matchDetails: {match_id}")
+    if not away.get("id") and not away.get("name"):
+        raise RuntimeError(f"Away team unavailable in FotMob matchDetails: {match_id}")
 
     utc_value = (
         general.get("matchTimeUTC")
