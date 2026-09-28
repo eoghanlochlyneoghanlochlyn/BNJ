@@ -30,3 +30,50 @@ def send_photo(path: Path, caption: str = "") -> None:
     payload = response.json()
     if not payload.get("ok"):
         raise RuntimeError(f"Telegram API rejected the message: {payload}")
+
+
+def send_photos(paths: list[Path], caption: str = "") -> None:
+    token = os.environ.get("TELEGRAMBOT")
+    chat_id = os.environ.get("TELEGRAMCHANNEL")
+    if not token or not chat_id:
+        raise RuntimeError("Missing TELEGRAMBOT or TELEGRAMCHANNEL GitHub secret.")
+    if not paths:
+        raise ValueError("No photos to send.")
+
+    url = f"{API}/bot{token}/sendMediaGroup"
+    media = []
+    files = {}
+
+    handles = []
+    try:
+        for index, path in enumerate(paths):
+            handle = path.open("rb")
+            handles.append(handle)
+            attach_name = f"photo{index}"
+            item = {
+                "type": "photo",
+                "media": f"attach://{attach_name}",
+            }
+            if index == 0 and caption:
+                item["caption"] = caption
+            media.append(item)
+            files[attach_name] = (path.name, handle, "image/png")
+
+        response = requests.post(
+            url,
+            data={"chat_id": chat_id, "media": __import__("json").dumps(media)},
+            files=files,
+            timeout=120,
+        )
+    finally:
+        for handle in handles:
+            handle.close()
+
+    if not response.ok:
+        raise RuntimeError(
+            f"Telegram media group send failed: HTTP {response.status_code}: {response.text[:500]}"
+        )
+
+    payload = response.json()
+    if not payload.get("ok"):
+        raise RuntimeError(f"Telegram API rejected the media group: {payload}")
