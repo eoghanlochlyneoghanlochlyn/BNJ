@@ -205,11 +205,28 @@ def main():
 
     render_fixtures(matches, dt.date.today(), output_path)
 
-    print(f"Poster generated: {output_path}")
+    generated_paths = [output_path]
+    page_index = 2
+    while True:
+        page_path = output_path.with_name(
+            f"{output_path.stem}-{page_index}{output_path.suffix}"
+        )
+        if not page_path.exists():
+            break
+        generated_paths.append(page_path)
+        page_index += 1
 
-    send_photo(output_path, "🧪 تست پوستر BNJ — مسابقات انتخابی")
+    print("Generated poster pages:")
+    for page_path in generated_paths:
+        print(page_path)
 
-    print("Poster sent to Telegram.")
+    for index, page_path in enumerate(generated_paths, start=1):
+        send_photo(
+            page_path,
+            f"🧪 تست پوستر BNJ — مسابقات انتخابی | صفحه {index}/{len(generated_paths)}",
+        )
+
+    print(f"Sent {len(generated_paths)} poster page(s) to Telegram.")
     print("Daily report state was not modified.")
 
 
