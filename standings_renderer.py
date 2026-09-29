@@ -265,8 +265,8 @@ def render_standings(data: dict, day, output: Path) -> None:
 
     # Header layout (single horizontal line):
     #   جدول رقابت  فصل  [league logo]
-    # Everything is vertically centered on the same baseline/line.
-    title_y = 92
+    # The season/logo are centered on the exact same visual line as the title.
+    title_y = 108
     title_right = WIDTH - MARGIN_X
     title_text = f"جدول {competition}"
     title_font = _font(52, True)
