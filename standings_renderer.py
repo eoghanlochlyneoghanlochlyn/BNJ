@@ -60,6 +60,36 @@ def _team_logo(team_id: str):
         return None
 
 
+def _league_logo(competition_id: str):
+    if not competition_id:
+        return None
+    import requests
+    path = LOGO_DIR / f"league_{competition_id}.png"
+    try:
+        if not path.exists():
+            base = "https://images." + "fotmob.com/image_resources/logo/"
+            response = requests.get(base + "leaguelogo/" + str(competition_id) + ".png", timeout=8)
+            response.raise_for_status()
+            path.write_bytes(response.content)
+        image = Image.open(path).convert("RGBA")
+        image.thumbnail((72, 72), Image.Resampling.LANCZOS)
+        return image
+    except Exception as error:
+        print(f"[STANDINGS] league logo {competition_id}: {error}")
+        return None
+
+
+def _qual_color(row: dict):
+    raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
+    value = raw.get("qualColor") or raw.get("qualifyingColor") or row.get("qualColor")
+    if not value:
+        return None
+    value = str(value).strip()
+    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", value):
+        return None
+    return tuple(int(value[i:i+2], 16) for i in (1, 3, 5))
+
+
 def _jalali_date(date_value):
     try:
         import jdatetime
