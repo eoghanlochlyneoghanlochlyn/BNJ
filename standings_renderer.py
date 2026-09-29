@@ -286,27 +286,26 @@ def _draw_table(draw, image, x1, y, x2, table):
 
 
 def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
-    """Render a mixed Persian/Latin title using script-appropriate fonts.
+    """Render a mixed Persian/Latin title in the poster's intended visual order.
 
-    Never pass a mixed-script string to a single Persian font. That is the
-    source of the hollow-square glyphs seen when FotMob/competition labels
-    contain Latin level letters such as A/B/C/D.
+    Titles such as «جدول جام جهانی گروه L» are laid out explicitly from
+    visual left to visual right. Each Persian token still uses RTL shaping,
+    while Latin group letters use a Latin-capable font.
     """
     text = str(title_text or "").replace("|", " ")
     tokens = re.findall(
         r"[A-Za-z0-9]+(?:[./:-][A-Za-z0-9]+)*|"
         r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+|"
-        r"[^\\w\\s]",
+        r"[^\w\s]",
         text,
     )
+    if not tokens:
+        return 0
 
-    # Draw from the visual right edge toward the left. Each token gets a font
-    # that definitely contains the glyphs it needs.
-    x_right = float(right_x)
-    widths: list[float] = []
     gap = 10
+    measured = []
 
-    for token in reversed(tokens):
+    for token in tokens:
         if re.fullmatch(r"[A-Za-z0-9]+(?:[./:-][A-Za-z0-9]+)*", token):
             font = _latin_font(42 if len(token) <= 2 else 46, True)
             direction = "ltr"
@@ -320,26 +319,32 @@ def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
             direction = "ltr"
             language = None
 
+        kwargs = {"direction": direction}
+        if language:
+            kwargs["language"] = language
+        bbox = draw.textbbox((0, 0), token, font=font, **kwargs)
+        measured.append((token, font, direction, language, bbox[2] - bbox[0]))
+
+    total_width = sum(item[4] for item in measured) + gap * (len(measured) - 1)
+    x = float(right_x) - total_width
+
+    for token, font, direction, language, width in measured:
+        token_right = x + width
         kwargs = {
             "anchor": "ra",
             "direction": direction,
+            "fill": TEXT,
         }
         if language:
             kwargs["language"] = language
 
-        bbox = draw.textbbox((x_right, y), token, font=font, **kwargs)
+        bbox = draw.textbbox((token_right, y), token, font=font, **kwargs)
         ink_center = (bbox[1] + bbox[3]) / 2
         draw_y = y + (y - ink_center)
-        draw.text((x_right, draw_y), token, font=font, fill=TEXT, **kwargs)
+        draw.text((token_right, draw_y), token, font=font, **kwargs)
+        x += width + gap
 
-        width = bbox[2] - bbox[0]
-        widths.append(width)
-        x_right -= width + gap
-
-    if not widths:
-        return 0
-
-    return right_x - x_right - gap
+    return total_width
 
 
 def render_standings(data: dict, day, output: Path, title_suffix: str | None = None) -> None:
