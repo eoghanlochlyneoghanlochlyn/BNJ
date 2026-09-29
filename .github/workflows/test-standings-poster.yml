@@ -13,12 +13,6 @@ on:
         required: false
         default: ""
         type: string
-      send_telegram:
-        description: "Send generated table to Telegram"
-        required: false
-        default: false
-        type: boolean
-
 permissions:
   contents: read
 
@@ -70,7 +64,6 @@ jobs:
           PY
 
       - name: Send to Telegram
-        if: ${{ inputs.send_telegram }}
         run: |
           python - <<'PY'
           import datetime as dt
