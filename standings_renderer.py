@@ -149,7 +149,9 @@ def _draw_table(draw, image, x1, y, x2, table):
 
     positions = {}
     cursor = x2
-    for key in ("points", "gd", "ga", "gf", "losses", "draws", "wins", "played", "team", "rank"):
+    # The table itself is RTL: rank/team start at the RIGHT edge and
+    # the statistical columns continue toward the LEFT, ending with points.
+    for key in ("rank", "team", "played", "wins", "draws", "losses", "gf", "ga", "gd", "points"):
         cursor -= widths[key]
         positions[key] = (cursor, cursor + widths[key])
 
@@ -261,24 +263,48 @@ def render_standings(data: dict, day, output: Path) -> None:
     draw.rounded_rectangle((MARGIN_X, 34, WIDTH - MARGIN_X, 42), radius=4, fill=ACCENT)
     draw.line((MARGIN_X, HEADER_H - 22, WIDTH - MARGIN_X, HEADER_H - 22), fill=BORDER, width=2)
 
-    # Title is on the right. The league logo sits to its LEFT, while the
-    # season remains directly underneath the title.
+    # Header layout:
+    #   competition title on the RIGHT
+    #   league logo immediately to the LEFT of that title
+    #   season directly UNDER the title, aligned to the same right edge
     title_y = 78
     title_right = WIDTH - MARGIN_X
-    logo_right = title_right - 470
+    title_text = f"جدول {competition}"
+    title_font = _font(52, True)
+
+    _draw_text(draw, (title_right, title_y), title_text, title_font, TEXT, "ra")
+
+    # Measure the actual RTL title width instead of using a fixed offset.
+    # This keeps the logo immediately beside the title for every competition.
+    title_bbox = draw.textbbox(
+        (0, 0),
+        title_text,
+        font=title_font,
+        anchor="ra",
+        direction="rtl",
+        language="fa",
+    )
+    title_width = title_bbox[2] - title_bbox[0]
+    logo_gap = 22
     league_logo = _league_logo(competition_id)
     if league_logo:
-        image.alpha_composite(
-            league_logo,
-            (int(logo_right - league_logo.width), int(title_y - league_logo.height / 2)),
-        )
+        logo_x = title_right - title_width - logo_gap - league_logo.width
+        logo_y = title_y - league_logo.height / 2
+        image.alpha_composite(league_logo, (int(logo_x), int(logo_y)))
 
-    _draw_text(draw, (title_right, title_y), f"جدول {competition}", _font(52, True), TEXT, "ra")
-
-    # Use a Latin font for 2026/27 so the slash is always rendered.
+    # Keep the season directly below the competition title and aligned to
+    # the title's right edge. Use a Latin font so the slash is always valid.
     season_text = season.replace("2026/2027", "2026/27") if season else ""
     if season_text:
-        _draw_text(draw, (title_right, 142), season_text, _latin_font(27), MUTED, "ra", "ltr")
+        _draw_text(
+            draw,
+            (title_right, 142),
+            season_text,
+            _latin_font(27),
+            MUTED,
+            "ra",
+            "ltr",
+        )
 
     y = HEADER_H
     for index, table in enumerate(tables):
