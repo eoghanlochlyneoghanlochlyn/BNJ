@@ -122,6 +122,9 @@ def _group_display_name(value: Any) -> str:
     if not text:
         return ""
 
+    if text.casefold() == "best 3rd placed teams":
+        return "برترین تیم های سوم"
+
     # FotMob may return variants such as "Group E", "Grp E",
     # "Grp. E", or "Grp . E". Normalize all of them to Persian so the
     # renderer never has to display the English group abbreviation.
@@ -354,6 +357,171 @@ def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
     return total_width
 
 
+def _render_grouped_combined(data: dict, output: Path) -> None:
+    """Render a compact multi-column poster for completed group stages."""
+    tables = data.get("tables") or []
+    real_groups = [
+        t for t in tables
+        if _group_display_name(t.get("group")).startswith("گروه ")
+    ]
+    auxiliary = [t for t in tables if t not in real_groups]
+    if not real_groups:
+        raise ValueError("No real group tables found for grouped combined rendering.")
+
+    cols = 3
+    gap_x = 28
+    gap_y = 28
+    card_w = (WIDTH - 2 * MARGIN_X - gap_x * (cols - 1)) // cols
+    header_h = 54
+    row_h = 64
+    title_h = 150
+
+    def card_height(table):
+        return header_h + row_h * len(table["rows"]) + 18
+
+    group_rows = (len(real_groups) + cols - 1) // cols
+    group_heights = []
+    for row_start in range(0, len(real_groups), cols):
+        group_heights.append(
+            max(card_height(t) for t in real_groups[row_start:row_start + cols])
+        )
+
+    aux_h = sum(58 + row_h * len(t["rows"]) + 18 for t in auxiliary)
+    height = max(
+        760,
+        title_h + sum(group_heights)
+        + gap_y * max(0, group_rows - 1)
+        + (gap_y + aux_h if auxiliary else 0)
+        + 70,
+    )
+    image = Image.new("RGBA", (WIDTH, height), BG + (255,))
+    draw = ImageDraw.Draw(image)
+
+    draw.rounded_rectangle((MARGIN_X, 34, WIDTH - MARGIN_X, 42),
+                           radius=4, fill=ACCENT)
+    draw.line((MARGIN_X, title_h - 22, WIDTH - MARGIN_X, title_h - 22),
+              fill=BORDER, width=2)
+
+    competition_id = str(data.get("competitionId") or "")
+    competition = _competition_display_name(
+        competition_id, str(data.get("competitionName") or "")
+    )
+    _draw_standings_title(draw, WIDTH - MARGIN_X, 92, f"جدول {competition}")
+
+    season = str(data.get("season") or "")
+    if season:
+        _draw_text(
+            draw, (MARGIN_X, 92),
+            season.replace("2026/2027", "2026/27"),
+            _latin_font(24, True), MUTED, "lm", "ltr"
+        )
+
+    y = title_h
+    for row_start in range(0, len(real_groups), cols):
+        row_tables = real_groups[row_start:row_start + cols]
+        row_h_total = group_heights[row_start // cols]
+
+        for col, table in enumerate(row_tables):
+            x = MARGIN_X + col * (card_w + gap_x)
+            y0 = y
+            y1 = y + row_h_total
+            draw.rounded_rectangle(
+                (x, y0, x + card_w, y1),
+                radius=18, fill=CARD, outline=BORDER, width=2
+            )
+
+            group = _group_display_name(table.get("group"))
+            match = re.fullmatch(r"گروه ([A-Za-z0-9]+)", group)
+            label = match.group(1) if match else group
+            font = _latin_font(27, True) if label.isalpha() else _font(27, True)
+            _draw_text(draw, (x + card_w - 18, y0 + 27), "گروه",
+                       _font(27, True), TEXT, "rm")
+            draw.text((x + card_w - 18 - 12, y0 + 27), label,
+                      font=font, fill=TEXT, anchor="rm", direction="ltr")
+
+            rank_x = x + 34
+            points_x = x + card_w - 34
+            team_right = points_x - 74
+            stats_right = team_right - 8
+            row_y = y0 + header_h
+
+            for i, row in enumerate(table["rows"]):
+                draw.line((x + 12, row_y, x + card_w - 12, row_y),
+                          fill=BORDER, width=1)
+                _draw_text(
+                    draw, (rank_x, row_y + row_h / 2),
+                    _persian_digits(row.get("rank", i + 1)),
+                    _font(25, True), TEXT, "mm", "ltr"
+                )
+                _draw_text(
+                    draw, (points_x, row_y + row_h / 2),
+                    _persian_digits(row.get("points", "—")),
+                    _font(28, True), TEXT, "mm", "ltr"
+                )
+
+                team_id = str(row.get("teamId") or "")
+                logo = _team_logo(team_id)
+                logo_x = team_right - LOGO_SIZE
+                if logo:
+                    image.alpha_composite(
+                        logo, (int(logo_x), int(row_y + (row_h - logo.height) / 2))
+                    )
+                team_name = _team_name({
+                    "id": team_id, "name": row.get("teamName") or "—"
+                })
+                _draw_text(draw, (logo_x - 10, row_y + row_h / 2),
+                           team_name, _font(24, True), TEXT, "rm")
+
+                gd = row.get("goalDiff")
+                gd_text = "—" if gd is None else _persian_digits(gd)
+                _draw_text(draw, (stats_right, row_y + row_h / 2),
+                           gd_text, _font(23, True), MUTED, "rm", "ltr")
+                row_y += row_h
+
+        y += row_h_total + gap_y
+
+    for table in auxiliary:
+        h = 58 + row_h * len(table["rows"]) + 18
+        draw.rounded_rectangle(
+            (MARGIN_X, y, WIDTH - MARGIN_X, y + h),
+            radius=18, fill=CARD, outline=BORDER, width=2
+        )
+        title = _group_display_name(table.get("group")) or "جدول تکمیلی"
+        _draw_text(draw, (WIDTH - MARGIN_X - 24, y + 29), title,
+                   _font(31, True), TEXT, "rm")
+
+        row_y = y + 58
+        col_w = (WIDTH - 2 * MARGIN_X) / 4
+        chunks = [table["rows"][i:i + 3]
+                  for i in range(0, len(table["rows"]), 3)]
+        for col, chunk in enumerate(chunks[:4]):
+            cx = WIDTH - MARGIN_X - col_w * (col + 0.5)
+            for j, row in enumerate(chunk):
+                yy = row_y + j * row_h + row_h / 2
+                _draw_text(draw, (cx + 30, yy),
+                           _persian_digits(row.get("rank", "")),
+                           _font(24, True), TEXT, "rm", "ltr")
+                team_id = str(row.get("teamId") or "")
+                logo = _team_logo(team_id)
+                if logo:
+                    image.alpha_composite(
+                        logo, (int(cx - col_w / 2 + 24), int(yy - logo.height / 2))
+                    )
+                team_name = _team_name({
+                    "id": team_id, "name": row.get("teamName") or "—"
+                })
+                _draw_text(draw, (cx - 8, yy), team_name,
+                           _font(23, True), TEXT, "rm")
+                points = row.get("points")
+                if points is not None:
+                    _draw_text(draw, (cx - col_w / 2 + 86, yy),
+                               _persian_digits(points), _font(24, True),
+                               TEXT, "lm", "ltr")
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image.convert("RGB").save(output, "PNG", optimize=True)
+
+
 def render_standings(data: dict, day, output: Path, title_suffix: str | None = None) -> None:
     if not features.check("raqm"):
         raise RuntimeError("Pillow was built without libraqm; Persian RTL rendering cannot be trusted.")
@@ -361,6 +529,15 @@ def render_standings(data: dict, day, output: Path, title_suffix: str | None = N
     tables = data.get("tables") or []
     if not tables:
         raise ValueError("Cannot render standings without tables.")
+
+    # Completed grouped competitions use a compact grid so all groups and
+    # the complete auxiliary third-place ranking remain visible.
+    if title_suffix is None and any(
+        _group_display_name(t.get("group")).startswith("گروه ")
+        for t in tables
+    ):
+        _render_grouped_combined(data, output)
+        return
 
     competition_id = str(data.get("competitionId") or "")
     english_name = str(data.get("competitionName") or "")
