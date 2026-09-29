@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import re
 from typing import Any
 
 import requests
@@ -235,7 +236,7 @@ def _is_group_table(table: dict) -> bool:
         return False
     return bool(
         re.fullmatch(
-            r"(?:Grp\\.?|Group)\\s+[A-Za-z0-9]+",
+            r"(?:Grp\.?|Group)\s+[A-Za-z0-9]+",
             group,
             flags=re.IGNORECASE,
         )
