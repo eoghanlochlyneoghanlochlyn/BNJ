@@ -64,6 +64,9 @@ jobs:
           PY
 
       - name: Send to Telegram
+        env:
+          TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
+          TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
         run: |
           python - <<'PY'
           import datetime as dt
