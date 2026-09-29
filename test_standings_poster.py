@@ -74,6 +74,20 @@ class StandingsTests(unittest.TestCase):
         self.assertTrue(group_stage_complete(tables[0]))
         self.assertTrue(all_groups_complete({"tables": tables}))
 
+    def test_auxiliary_best_third_table_does_not_block_completion(self):
+        group_rows = [
+            {"played": 3},
+            {"played": 3},
+            {"played": 3},
+            {"played": 3},
+        ]
+        tables = [
+            {"group": "Grp. A", "rows": group_rows},
+            {"group": "Grp. B", "rows": group_rows},
+            {"group": "Best 3rd placed teams", "rows": [{"played": None}] * 12},
+        ]
+        self.assertTrue(all_groups_complete({"tables": tables}))
+
     def test_group_stage_not_complete_when_a_team_is_missing_a_match(self):
         table = {
             "rows": [
