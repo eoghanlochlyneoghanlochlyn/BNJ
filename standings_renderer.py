@@ -538,13 +538,18 @@ def render_standings(data: dict, day, output: Path, title_suffix: str | None = N
     competition = _competition_display_name(competition_id, english_name)
     season = str(data.get("season") or "فصل جاری")
 
-    card_height = 0
+    # Calculate the canvas from the exact vertical cursor movement used by
+    # the renderer below. The previous estimate omitted the table/card
+    # padding and the inter-table gap, which accumulated over many groups
+    # and clipped the bottom rows of the final group.
+    content_end = HEADER_H
     for table in tables:
-        card_height += HEADER_ROW_H + ROW_H * len(table["rows"]) + 26
         if table.get("group"):
-            card_height += 54
+            content_end += 54
+        content_end += HEADER_ROW_H + ROW_H * len(table["rows"])
+        content_end += 44
 
-    height = max(760, HEADER_H + card_height + 90)
+    height = max(760, content_end + 40)
     image = Image.new("RGBA", (WIDTH, height), BG + (255,))
     draw = ImageDraw.Draw(image)
 
