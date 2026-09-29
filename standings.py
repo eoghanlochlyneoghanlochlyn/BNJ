@@ -358,7 +358,7 @@ def _normalize_knockout_round(round_data: dict) -> dict | None:
             "aggregatedResult": raw.get("aggregatedResult") if isinstance(raw.get("aggregatedResult"), dict) else {},
             "aggregatedWinner": _as_int(raw.get("aggregatedWinner")),
             "aggregatedLoser": _as_int(raw.get("aggregatedLoser")),
-            "penaltyScore": None,
+            "penaltyScore": raw.get("penaltyScore") if isinstance(raw.get("penaltyScore"), dict) else None,
             "raw": raw,
         })
 
@@ -533,6 +533,7 @@ def fetch_standings(competition_id: str, season: str | None = None) -> dict:
 
     tables = _extract_tables(data)
     knockout_rounds = _extract_knockout(data)
+    _enrich_knockout_penalties(knockout_rounds)
     if not tables and not knockout_rounds:
         raise RuntimeError(
             f"No standings or knockout data found for FotMob competition {competition_id}."
