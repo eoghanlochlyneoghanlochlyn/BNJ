@@ -87,6 +87,7 @@ def _league_logo(competition_id: str):
         print(f"[STANDINGS] league logo {competition_id}: {error}")
         return None
 
+
 def _qual_color(row: dict):
     raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
     value = raw.get("qualColor") or raw.get("qualifyingColor") or row.get("qualColor")
@@ -146,7 +147,6 @@ def _draw_table(draw, image, x1, y, x2, table):
     if x2 - x1 < total:
         raise ValueError("Standings card is narrower than its required columns.")
 
-    # Header
     draw.rounded_rectangle(
         (x1, y, x2, y + HEADER_ROW_H),
         radius=18,
@@ -157,8 +157,6 @@ def _draw_table(draw, image, x1, y, x2, table):
 
     positions = {}
     cursor = x2
-    # The table itself is RTL: rank/team start at the RIGHT edge and
-    # the statistical columns continue toward the LEFT, ending with points.
     for key in ("rank", "team", "played", "wins", "draws", "losses", "gf", "ga", "gd", "points"):
         cursor -= widths[key]
         positions[key] = (cursor, cursor + widths[key])
@@ -235,8 +233,6 @@ def _draw_table(draw, image, x1, y, x2, table):
                 value = "—"
             text = _persian_digits(value)
             font = _font(38, True)
-            # Numeric cells are explicitly LTR so a negative goal difference
-            # renders as -۳ rather than ۳- in the visual order.
             _draw_text(
                 draw,
                 (center, row_y + ROW_H / 2),
@@ -253,6 +249,55 @@ def _draw_table(draw, image, x1, y, x2, table):
     return row_y
 
 
+def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
+    """Draw the standings title while keeping Nations League A-D Latin."""
+    match = re.fullmatch(r"(جدول لیگ ملت‌های اروپا) ([ABCD])", title_text)
+    if not match:
+        _draw_text(draw, (right_x, y), title_text, _font(52, True), TEXT, "rm")
+        return
+
+    base_text, level = match.groups()
+    base_font = _font(52, True)
+    level_font = _latin_font(42, True)
+    gap = 18
+
+    base_bbox = draw.textbbox(
+        (0, 0), base_text, font=base_font, anchor="ra",
+        direction="rtl", language="fa"
+    )
+    base_width = base_bbox[2] - base_bbox[0]
+
+    level_bbox = draw.textbbox(
+        (0, 0), level, font=level_font, anchor="ra", direction="ltr"
+    )
+    level_width = level_bbox[2] - level_bbox[0]
+
+    # The level is immediately to the left of the Persian title, with its
+    # own Latin-capable font. Align both actual ink boxes vertically.
+    level_right = right_x - base_width - gap
+
+    base_bbox_at_y = draw.textbbox(
+        (right_x, y), base_text, font=base_font, anchor="ra",
+        direction="rtl", language="fa"
+    )
+    base_center = (base_bbox_at_y[1] + base_bbox_at_y[3]) / 2
+    base_y = y + (y - base_center)
+    draw.text(
+        (right_x, base_y), base_text, font=base_font, fill=TEXT, anchor="ra",
+        direction="rtl", language="fa"
+    )
+
+    level_bbox_at_y = draw.textbbox(
+        (level_right, y), level, font=level_font, anchor="ra", direction="ltr"
+    )
+    level_center = (level_bbox_at_y[1] + level_bbox_at_y[3]) / 2
+    level_y = y + (y - level_center)
+    draw.text(
+        (level_right, level_y), level, font=level_font, fill=TEXT, anchor="ra",
+        direction="ltr"
+    )
+
+
 def render_standings(data: dict, day, output: Path) -> None:
     if not features.check("raqm"):
         raise RuntimeError("Pillow was built without libraqm; Persian RTL rendering cannot be trusted.")
@@ -266,8 +311,6 @@ def render_standings(data: dict, day, output: Path) -> None:
     competition = _competition_display_name(competition_id, english_name)
     season = str(data.get("season") or "فصل جاری")
 
-    # A single league table currently fits comfortably in one poster. Multiple
-    # real groups are stacked and keep their own explicit FotMob group labels.
     card_height = 0
     for table in tables:
         card_height += HEADER_ROW_H + ROW_H * len(table["rows"]) + 26
@@ -281,23 +324,17 @@ def render_standings(data: dict, day, output: Path) -> None:
     draw.rounded_rectangle((MARGIN_X, 34, WIDTH - MARGIN_X, 42), radius=4, fill=ACCENT)
     draw.line((MARGIN_X, HEADER_H - 22, WIDTH - MARGIN_X, HEADER_H - 22), fill=BORDER, width=2)
 
-    # Header layout (single horizontal line):
-    #   جدول رقابت  فصل  [league logo]
-    # The season/logo are centered on the exact same visual line as the title.
     title_y = 108
     title_right = WIDTH - MARGIN_X
     title_text = f"جدول {competition}"
-    title_font = _font(52, True)
+    _draw_standings_title(draw, title_right, title_y, title_text)
 
-    _draw_text(draw, (title_right, title_y), title_text, title_font, TEXT, "rm")
-
-    # Season goes immediately after the competition title, on the same line.
     season_text = season.replace("2026/2027", "2026/27") if season else ""
     season_font = _latin_font(27)
     title_bbox = draw.textbbox(
         (0, 0),
         title_text,
-        font=title_font,
+        font=_font(52, True),
         anchor="ra",
         direction="rtl",
         language="fa",
@@ -317,8 +354,6 @@ def render_standings(data: dict, day, output: Path) -> None:
             "ltr",
         )
 
-    # League logo goes immediately AFTER the season (further LEFT), and is
-    # vertically centered on exactly the same horizontal line as the text.
     season_bbox = draw.textbbox(
         (0, 0),
         season_text,
