@@ -167,8 +167,10 @@ def get_match(match_id: str) -> dict:
             "name": str(away.get("longName") or away.get("name") or away.get("shortName") or ""),
         },
         "leagueId": str(
-            league.get("id")
+            general.get("leagueId")
+            or league.get("id")
             or league.get("leagueId")
+            or general.get("parentLeagueId")
             or league.get("primaryId")
             or ""
         ),
@@ -188,6 +190,13 @@ def main():
     matches = [get_match(match_id) for match_id in MATCH_IDS]
 
     enrich_match_stages(matches)
+
+    from renderer import _competition_name
+    for match in matches:
+        print(f"[COMPETITION] {match['id']}: id={match['leagueId']!r}, raw={match['competitionName']!r}, translated={_competition_name(match)!r}")
+    french = next((m for m in matches if m["id"] == "5740646"), None)
+    if french is not None and _competition_name(french) != "سوپرجام فرانسه":
+        raise AssertionError(f"French Super Cup translation failed: {french!r}")
 
     print("Selected matches:")
     for match in matches:
