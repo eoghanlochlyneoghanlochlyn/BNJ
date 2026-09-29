@@ -182,7 +182,6 @@ def _draw_table(draw, image, x1, y, x2, table):
             if key == "team":
                 team_id = str(row.get("teamId") or "")
                 logo = _team_logo(team_id)
-                logo_x = right - 28 - LOGO_SIZE
                 if logo:
                     image.alpha_composite(logo, (int(logo_x), int(row_y + (ROW_H - logo.height) / 2)))
                 team_name = _team_name(
@@ -191,14 +190,23 @@ def _draw_table(draw, image, x1, y, x2, table):
                         "name": row.get("teamName") or "—",
                     }
                 )
+                team_right = right - 18
+                logo_x = team_right - LOGO_SIZE - 14
                 _draw_text(
                     draw,
-                    (logo_x - 16, row_y + ROW_H / 2),
+                    (logo_x - 14, row_y + ROW_H / 2),
                     team_name,
                     _font(28, True),
                     TEXT,
                     "rm",
                 )
+                qual_color = _qual_color(row)
+                if qual_color:
+                    draw.rounded_rectangle(
+                        (right - 8, row_y + 12, right - 2, row_y + ROW_H - 12),
+                        radius=3,
+                        fill=qual_color,
+                    )
                 continue
 
             field = {
