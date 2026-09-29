@@ -355,6 +355,10 @@ def _normalize_knockout_round(round_data: dict) -> dict | None:
             "tbdTeam1": bool(raw.get("tbdTeam1")),
             "tbdTeam2": bool(raw.get("tbdTeam2")),
             "matches": raw.get("matches") if isinstance(raw.get("matches"), list) else [],
+            "aggregatedResult": raw.get("aggregatedResult") if isinstance(raw.get("aggregatedResult"), dict) else {},
+            "aggregatedWinner": _as_int(raw.get("aggregatedWinner")),
+            "aggregatedLoser": _as_int(raw.get("aggregatedLoser")),
+            "penaltyScore": None,
             "raw": raw,
         })
 
@@ -366,6 +370,123 @@ def _normalize_knockout_round(round_data: dict) -> dict | None:
         "matchups": normalized,
         "raw": round_data,
     }
+
+
+def _coerce_score_pair(value: Any) -> dict | None:
+    if isinstance(value, dict):
+        home = value.get("home")
+        away = value.get("away")
+        if home is None:
+            home = value.get("homeScore")
+        if away is None:
+            away = value.get("awayScore")
+        if home is not None and away is not None:
+            try:
+                return {"home": int(home), "away": int(away)}
+            except (TypeError, ValueError):
+                return None
+    if isinstance(value, (list, tuple)) and len(value) >= 2:
+        try:
+            return {"home": int(value[0]), "away": int(value[1])}
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _collect_shootout_sections(node: Any, result: list[Any] | None = None) -> list[Any]:
+    if result is None:
+        result = []
+    if isinstance(node, dict):
+        for key in (
+            "penaltyShootout", "penalty_shootout", "shootout",
+            "penaltyShootoutEvents", "penalty_shootout_events",
+        ):
+            value = node.get(key)
+            if isinstance(value, (dict, list)):
+                result.append(value)
+                _collect_shootout_sections(value, result)
+        for key, value in node.items():
+            if key not in {
+                "penaltyShootout", "penalty_shootout", "shootout",
+                "penaltyShootoutEvents", "penalty_shootout_events",
+            } and isinstance(value, (dict, list)):
+                _collect_shootout_sections(value, result)
+    elif isinstance(node, list):
+        for item in node:
+            if isinstance(item, (dict, list)):
+                _collect_shootout_sections(item, result)
+    return result
+
+
+def _find_shootout_score(node: Any) -> dict | None:
+    if isinstance(node, dict):
+        for key in ("penaltyScore", "penalty_score", "shootoutScore", "shootout_score"):
+            score = _coerce_score_pair(node.get(key))
+            if score is not None:
+                return score
+        for key in ("penalties", "penaltyShootout", "penalty_shootout", "shootout"):
+            value = node.get(key)
+            score = _coerce_score_pair(value)
+            if score is not None:
+                return score
+            score = _find_shootout_score(value)
+            if score is not None:
+                return score
+    elif isinstance(node, list):
+        for item in node:
+            score = _find_shootout_score(item)
+            if score is not None:
+                return score
+    return None
+
+
+def _fetch_penalty_score(match_id: Any) -> dict | None:
+    if not match_id:
+        return None
+    try:
+        response = requests.get(
+            f"{FOTMOB_BASE_URL}/api/data/matchDetails",
+            params={"matchId": str(match_id)},
+            headers=HEADERS,
+            timeout=15,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return None
+
+        # Match the exact logic used by Ftbllrslts: explicit shootout
+        # fields first, then the explicit shootout event section.
+        content = payload.get("content")
+        if not isinstance(content, dict):
+            content = {}
+        for key in ("penaltyScore", "penalty_score", "shootoutScore", "shootout_score"):
+            score = _coerce_score_pair(content.get(key))
+            if score is not None:
+                return score
+        for section in _collect_shootout_sections(content):
+            score = _find_shootout_score(section)
+            if score is not None:
+                return score
+        return _find_shootout_score(payload)
+    except (requests.RequestException, ValueError) as error:
+        print(f"[STANDINGS] knockout match {match_id}: penalty details unavailable: {error}")
+        return None
+
+
+def _enrich_knockout_penalties(rounds: list[dict]) -> None:
+    """Fill shootout scores from match details without changing home/away semantics."""
+    for round_data in rounds:
+        for matchup in round_data.get("matchups", []):
+            matches = matchup.get("matches") or []
+            for match in matches:
+                if not isinstance(match, dict):
+                    continue
+                match_id = match.get("matchId") or match.get("id")
+                score = _fetch_penalty_score(match_id)
+                if score is not None:
+                    matchup["penaltyScore"] = score
+                    break
 
 
 def _extract_knockout(data: dict) -> list[dict]:
