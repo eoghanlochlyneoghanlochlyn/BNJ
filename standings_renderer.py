@@ -745,24 +745,42 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     card_w = max(245, min(330, usable_width // cols))
 
     first_count = max(1, len(rounds[0].get("matchups") or []))
-    center_step = card_h + 28
-    body_top = HEADER_H + 56
+    body_top = HEADER_H + 70
+
+    # Build the bracket from a fixed set of first-round slots.  The important
+    # detail is that the *whole* first round defines the vertical envelope;
+    # later rounds are then recursively centered inside that envelope.  This
+    # keeps both the top and bottom halves symmetrical instead of allowing the
+    # lower rounds to drift downward.
+    if first_count == 1:
+        first_step = 0
+    else:
+        first_step = max(card_h + 34, 1160 / (first_count - 1))
+
     first_centers = [
-        body_top + card_h / 2 + i * center_step
+        body_top + card_h / 2 + i * first_step
         for i in range(first_count)
     ]
     all_centers: list[list[float]] = [first_centers]
 
-    # Each next-round match is vertically centered between the two matches
-    # feeding it. This halves the vertical density at every step.
     for ri in range(1, cols):
         previous = all_centers[-1]
         current_count = len(rounds[ri].get("matchups") or [])
         centers: list[float] = []
+
+        # Every match in round N occupies the exact midpoint of the two
+        # feeding slots in round N-1.  Never clamp the second slot to the last
+        # card: that creates the visibly broken "bottom" of a bracket when a
+        # round has fewer matchups than expected.
         for i in range(current_count):
-            a = previous[min(i * 2, len(previous) - 1)]
-            b = previous[min(i * 2 + 1, len(previous) - 1)]
-            centers.append((a + b) / 2)
+            left_index = i * 2
+            right_index = left_index + 1
+            if left_index >= len(previous):
+                break
+            if right_index < len(previous):
+                centers.append((previous[left_index] + previous[right_index]) / 2)
+            else:
+                centers.append(previous[left_index])
         all_centers.append(centers)
 
     last_center = max(max(c) for c in all_centers if c)
