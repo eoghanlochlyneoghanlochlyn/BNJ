@@ -207,12 +207,15 @@ def _competition_name(match: dict) -> str:
         .replace("è", "e")
         .split()
     )
-    if competition_id == "207" or normalized in {
-        "trophee des champions",
-        "french super cup",
-        "super cup france",
-        "supercoupe de france",
-    }:
+    if competition_id == "207" or any(
+        normalized == name or normalized.startswith(name + " ")
+        for name in (
+            "trophee des champions",
+            "french super cup",
+            "super cup france",
+            "supercoupe de france",
+        )
+    ):
         return "سوپرجام فرانسه"
 
     by_id = _load_competition_fa()
