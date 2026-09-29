@@ -328,7 +328,11 @@ def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
     total_width = sum(item[4] for item in measured) + gap * (len(measured) - 1)
     x = float(right_x) - total_width
 
-    for token, font, direction, language, width in measured:
+    # The title is a right-to-left sentence. PIL shapes each Persian token
+    # correctly with direction="rtl", but explicit token placement must also
+    # follow the visual RTL order. Therefore the logical token list is laid
+    # out from right to left (the last token occupies the leftmost position).
+    for token, font, direction, language, width in reversed(measured):
         token_right = x + width
         kwargs = {
             "anchor": "ra",
