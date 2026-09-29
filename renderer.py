@@ -493,9 +493,13 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
             radius=11,
             fill=accent,
         )
+        # Scores are intentionally rendered LTR as one atomic string.
+        # This keeps the shootout format visually as:
+        #   home (penalty-home-penalty-away) away
+        # instead of letting RTL punctuation reorder the parentheses.
         bbox = draw.textbbox(
             (0, 0), kickoff, font=time_font,
-            direction="rtl", language="fa",
+            direction="ltr",
         )
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
@@ -504,8 +508,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
             kickoff,
             font=time_font,
             fill=(255, 255, 255),
-            direction="rtl",
-            language="fa",
+            direction="ltr",
         )
 
         if stage:
