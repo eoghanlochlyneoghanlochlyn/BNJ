@@ -115,6 +115,21 @@ def _draw_text(draw, xy, text, font, fill, anchor="mm", direction="rtl"):
     draw.text(xy, str(text), font=font, **kwargs)
 
 
+
+def _group_display_name(value: Any) -> str:
+    text = " ".join(str(value or "").replace("\xa0", " ").split()).strip()
+    if not text:
+        return ""
+
+    match = re.fullmatch(r"(?:Group|Grp)\s*([A-Za-z0-9]+)", text, re.IGNORECASE)
+    if match:
+        label = match.group(1)
+        if label.isdigit():
+            label = _persian_digits(label)
+        return f"گروه {label}"
+
+    return text
+
 def _competition_display_name(competition_id: str, english_name: str) -> str:
     return _competition_name(
         {
@@ -298,7 +313,7 @@ def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
     )
 
 
-def render_standings(data: dict, day, output: Path) -> None:
+def render_standings(data: dict, day, output: Path, title_suffix: str | None = None) -> None:
     if not features.check("raqm"):
         raise RuntimeError("Pillow was built without libraqm; Persian RTL rendering cannot be trusted.")
 
@@ -327,6 +342,8 @@ def render_standings(data: dict, day, output: Path) -> None:
     title_y = 108
     title_right = WIDTH - MARGIN_X
     title_text = f"جدول {competition}"
+    if title_suffix:
+        title_text = f"{title_text} | {_group_display_name(title_suffix)}"
     _draw_standings_title(draw, title_right, title_y, title_text)
 
     season_text = season.replace("2026/2027", "2026/27") if season else ""
@@ -395,3 +412,14 @@ def render_standings(data: dict, day, output: Path) -> None:
 
     output.parent.mkdir(parents=True, exist_ok=True)
     image.convert("RGB").save(output, "PNG", optimize=True)
+
+
+def render_group_standings(data: dict, table: dict, day, output: Path) -> None:
+    """Render exactly one group as an independent poster."""
+    group = _group_display_name(table.get("group"))
+    if not group:
+        raise ValueError("Cannot render an individual group without a group name.")
+
+    group_data = dict(data)
+    group_data["tables"] = [table]
+    render_standings(group_data, day, output, title_suffix=group)
