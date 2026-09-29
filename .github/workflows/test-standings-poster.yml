@@ -41,7 +41,7 @@ jobs:
           mkdir -p output/standings
           for ID in "${IDS[@]}"; do
             ID="${ID//[[:space:]]/}"
-            python "$ID" "${{ inputs.season }}" <<'PY'
+            python - "$ID" "${{ inputs.season }}" <<'PY'
           import datetime as dt
           import sys
           from pathlib import Path
