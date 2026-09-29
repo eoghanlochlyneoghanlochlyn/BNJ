@@ -21,6 +21,7 @@ MATCH_IDS = [
     "5802952",
     "5881180",
     "5740646",  # French Super Cup: Lens vs Paris Saint-Germain
+    "5802936",  # Ligue 1: Monaco vs Strasbourg (11th match, tests two-column layout)
 ]
 
 
