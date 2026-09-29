@@ -72,12 +72,20 @@ def _league_logo(competition_id: str):
             response.raise_for_status()
             path.write_bytes(response.content)
         image = Image.open(path).convert("RGBA")
+
+        # Ligue 1's logo is predominantly black, so invert its RGB colors
+        # for better contrast against the dark standings header.
+        if str(competition_id) == "53":
+            from PIL import ImageOps
+            alpha = image.getchannel("A")
+            rgb = ImageOps.invert(image.convert("RGB"))
+            image = Image.merge("RGBA", (*rgb.split(), alpha))
+
         image.thumbnail((72, 72), Image.Resampling.LANCZOS)
         return image
     except Exception as error:
         print(f"[STANDINGS] league logo {competition_id}: {error}")
         return None
-
 
 def _qual_color(row: dict):
     raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
