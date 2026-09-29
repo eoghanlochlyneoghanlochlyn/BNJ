@@ -411,6 +411,13 @@ def _match_stage(match: dict) -> str:
             digits = "".join(ch for ch in text if ch.isdigit())
             if digits:
                 return f"راند {_to_persian_digits(digits)}"
+    else:
+        # League competitions can expose the matchweek as a bare number.
+        # Convert that numeric value explicitly so the poster shows
+        # "هفته N" instead of only "N".
+        if text.isdigit():
+            return f"هفته {_to_persian_digits(text)}"
+
     # Explicit knockout stages take precedence over generic "Round" handling.
     normalized = re.sub(r"\\s+", " ", low).strip()
     knockout = {
