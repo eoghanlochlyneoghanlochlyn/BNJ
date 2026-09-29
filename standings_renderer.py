@@ -612,15 +612,34 @@ def _knockout_match_score(matchup: dict) -> tuple[str, str | None, str | None]:
     return score, None, None
 
 
+def _knockout_name_is_persian(name: str) -> bool:
+    return any(
+        "\u0600" <= ch <= "\u06ff"
+        or "\u0750" <= ch <= "\u077f"
+        or "\u08a0" <= ch <= "\u08ff"
+        for ch in str(name)
+    )
+
+
 def _fit_knockout_name(draw, name: str, right: float, left: float):
-    """Choose a font that keeps the team name out of the score column."""
+    """Choose a font/direction that actually contains the team's glyphs."""
+    is_persian = _knockout_name_is_persian(name)
+    direction = "rtl" if is_persian else "ltr"
+    language = "fa" if is_persian else None
     for size in (22, 21, 20, 19, 18, 17):
-        font = _font(size, True)
-        bbox = draw.textbbox((0, 0), name, font=font, anchor="rm",
-                             direction="rtl", language="fa")
+        font = _font(size, True) if is_persian else _latin_font(size, True)
+        bbox_kwargs = {
+            "font": font,
+            "anchor": "rm",
+            "direction": direction,
+        }
+        if language:
+            bbox_kwargs["language"] = language
+        bbox = draw.textbbox((0, 0), name, **bbox_kwargs)
         if bbox[2] - bbox[0] <= max(30, right - left):
-            return font
-    return _font(17, True)
+            return font, direction, language
+    font = _font(17, True) if is_persian else _latin_font(17, True)
+    return font, direction, language
 
 
 def _draw_knockout_match(draw, image, x, y, w, h, matchup):
@@ -655,8 +674,17 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
             text_right = name_right
 
         text_left = score_x + 30
-        font = _fit_knockout_name(draw, name, text_right, text_left)
-        _draw_text(draw, (text_right, yy), name, font, TEXT, "rm")
+        font, name_direction, name_language = _fit_knockout_name(
+            draw, name, text_right, text_left
+        )
+        name_kwargs = {
+            "anchor": "rm",
+            "fill": TEXT,
+            "direction": name_direction,
+        }
+        if name_language:
+            name_kwargs["language"] = name_language
+        draw.text((text_right, yy), name, font=font, **name_kwargs)
         # Do not draw the parentheses with the Persian font: on some
         # Linux font builds they become tofu squares. Draw the numeric score
         # with the Persian font and the punctuation with a Latin font that
