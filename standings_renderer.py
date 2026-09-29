@@ -128,14 +128,14 @@ def _table_widths():
     return {
         "rank": 62,
         "team": 470,
-        "played": 90,
-        "wins": 90,
-        "draws": 90,
-        "losses": 90,
-        "gf": 105,
-        "ga": 105,
-        "gd": 105,
-        "points": 113,
+        "played": 96,
+        "wins": 96,
+        "draws": 96,
+        "losses": 96,
+        "gf": 110,
+        "ga": 110,
+        "gd": 110,
+        "points": 117,
     }
 
 
@@ -234,7 +234,7 @@ def _draw_table(draw, image, x1, y, x2, table):
             if value is None:
                 value = "—"
             text = _persian_digits(value)
-            font = _font(32, True)
+            font = _font(35, True)
             # Numeric cells are explicitly LTR so a negative goal difference
             # renders as -۳ rather than ۳- in the visual order.
             _draw_text(
