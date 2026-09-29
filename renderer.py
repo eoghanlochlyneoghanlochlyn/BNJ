@@ -151,6 +151,7 @@ def _load_competition_fa() -> dict[str, str]:
 
     # Project-specific display names.
     mapping["11015"] = "سوپرکاپ ایتالیا"
+    mapping["222"] = "سوپرکاپ ایتالیا"
     mapping["9806"] = "لیگ ملت‌های اروپا A"
     mapping["9807"] = "لیگ ملت‌های اروپا B"
     mapping["9808"] = "لیگ ملت‌های اروپا C"
@@ -185,6 +186,11 @@ def _competition_name(match: dict) -> str:
     by_id = _load_competition_fa()
     if competition_id in by_id:
         return by_id[competition_id]
+
+    # FotMob has historically exposed the Italian Super Cup under both
+    # competition IDs 11015 and 222. Treat both as the same competition.
+    if competition_id in {"11015", "222"}:
+        return "سوپرکاپ ایتالیا"
 
     english = str(
         match.get("competitionName")
@@ -480,7 +486,10 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
         draw_compact_name(away, int(away_x))
 
         # Clock stays centered between the two team blocks.
-        time_font = _font(26 if '(' in kickoff else 31, True)
+        # Result strings contain only digits and punctuation. Use a Latin
+        # font here so parentheses can never become a missing-glyph box when
+        # Pillow applies Persian shaping/direction to the surrounding text.
+        time_font = _latin_font(26 if '(' in kickoff else 31, True)
         clock_width = 190 if match.get('resultLabel') and '(' in kickoff else 126
         clock_h = 42
         draw.rounded_rectangle(
@@ -536,7 +545,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     mid_y = (y1 + y2) // 2
     stage_width = 180
     logo_size = 66
-    clock_width = 220 if match.get('resultLabel') and '(' in kickoff else 154
+    clock_width = 250 if match.get('resultLabel') and '(' in kickoff else 154
     content_left = x1 + 25
     content_right = x2 - stage_width - 20
     mid_x = (content_left + content_right) // 2
