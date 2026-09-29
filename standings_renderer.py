@@ -766,7 +766,7 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
         all_centers.append(centers)
 
     last_center = max(max(c) for c in all_centers if c)
-    height = max(900, int(last_center + card_h / 2 + 70))
+    height = max(1600, int(last_center + card_h / 2 + 70))
 
     image = Image.new("RGBA", (WIDTH, height), BG + (255,))
     draw = ImageDraw.Draw(image)
