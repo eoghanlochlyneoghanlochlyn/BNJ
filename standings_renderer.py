@@ -271,7 +271,7 @@ def render_standings(data: dict, day, output: Path) -> None:
     title_text = f"جدول {competition}"
     title_font = _font(52, True)
 
-    _draw_text(draw, (title_right, title_y), title_text, title_font, TEXT, "ra")
+    _draw_text(draw, (title_right, title_y), title_text, title_font, TEXT, "rm")
 
     # Season goes immediately after the competition title, on the same line.
     season_text = season.replace("2026/2027", "2026/27") if season else ""
@@ -295,7 +295,7 @@ def render_standings(data: dict, day, output: Path) -> None:
             season_text,
             season_font,
             MUTED,
-            "ra",
+            "rm",
             "ltr",
         )
 
@@ -305,7 +305,7 @@ def render_standings(data: dict, day, output: Path) -> None:
         (0, 0),
         season_text,
         font=season_font,
-        anchor="ra",
+        anchor="rm",
         direction="ltr",
         language="en",
     ) if season_text else (0, 0, 0, 0)
