@@ -1,0 +1,91 @@
+name: BNJ Standings Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      competition_id:
+        description: "FotMob competition ID"
+        required: false
+        default: "47"
+        type: string
+      season:
+        description: "Optional FotMob season, e.g. 2026/2027"
+        required: false
+        default: ""
+        type: string
+      send_telegram:
+        description: "Send generated table to Telegram"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  standings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install fonts and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core
+          pip install -r requirements.txt
+
+      - name: Fetch and render standings
+        env:
+          TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
+          TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
+        run: |
+          ARGS=(--competition-id "${{ inputs.competition_id }}")
+          if [ -n "${{ inputs.season }}" ]; then ARGS+=(--season "${{ inputs.season }}"); fi
+          python - <<'PY'
+          import datetime as dt
+          from pathlib import Path
+          from standings import fetch_standings
+          from standings_renderer import render_standings
+          data = fetch_standings("${{ inputs.competition_id }}", "${{ inputs.season }}" or None)
+          render_standings(data, dt.datetime.now(dt.timezone.utc).date(), Path("output/standings.png"))
+          PY
+
+      - name: Run standings unit tests
+        run: python -m unittest test_standings_poster.py -v
+
+      - name: Validate generated image
+        run: |
+          test -s output/standings.png
+          python - <<'PY'
+          from PIL import Image
+          image = Image.open("output/standings.png").convert("RGB")
+          if image.size[0] != 1600:
+              raise SystemExit(f"Unexpected width: {image.size}")
+          if len(set(image.getdata())) <= 1:
+              raise SystemExit("Generated standings image is blank.")
+          print("Valid standings image:", image.size)
+          PY
+
+      - name: Send to Telegram
+        if: ${{ inputs.send_telegram }}
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          from pathlib import Path
+          from standings import fetch_standings
+          from standings_renderer import render_standings
+          from telegram import send_photo
+          data = fetch_standings("${{ inputs.competition_id }}", "${{ inputs.season }}" or None)
+          render_standings(data, dt.datetime.now(dt.timezone.utc).date(), Path("output/standings.png"))
+          send_photo(Path("output/standings.png"), "📊 جدول رقابت")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bnj-standings-preview
+          path: output/standings.png
+          if-no-files-found: error
+          retention-days: 7
