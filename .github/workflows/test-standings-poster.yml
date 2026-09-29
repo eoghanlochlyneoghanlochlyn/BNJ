@@ -45,8 +45,8 @@ jobs:
           import datetime as dt
           import sys
           from pathlib import Path
-          from standings import all_groups_complete, fetch_standings, is_grouped_standings
-          from standings_renderer import render_group_standings, render_standings
+          from standings import all_groups_complete, fetch_standings, has_knockout, is_grouped_standings
+          from standings_renderer import render_group_standings, render_knockout_standings, render_standings
           competition_id = sys.argv[1]
           season = sys.argv[2] or None
           day = dt.datetime.now(dt.timezone.utc).date()
@@ -74,12 +74,36 @@ jobs:
                   print(f"[STANDINGS] {competition_id}: all groups complete -> final combined poster")
               else:
                   print(f"[STANDINGS] {competition_id}: group stage not complete -> no final combined poster")
-          else:
+
+          elif data.get("tables"):
               render_standings(
                   data,
                   day,
                   output_dir / f"{competition_id}.png",
               )
+
+          if has_knockout(data):
+              for index, round_data in enumerate(data["knockoutRounds"], start=1):
+                  stage = str(round_data.get("stage") or f"Stage {index}")
+                  safe_stage = "".join(ch if ch.isalnum() else "_" for ch in stage).strip("_")
+                  render_knockout_standings(
+                      data,
+                      day,
+                      output_dir / f"{competition_id}_KNOCKOUT_{index}_{safe_stage}.png",
+                      stage=round_data,
+                  )
+
+              render_knockout_standings(
+                  data,
+                  day,
+                  output_dir / f"{competition_id}_KNOCKOUT_FINAL.png",
+              )
+              print(
+                  f"[STANDINGS] {competition_id}: "
+                  f"{len(data['knockoutRounds'])} knockout round(s) rendered"
+              )
+          elif not data.get("tables"):
+              raise RuntimeError(f"{competition_id}: no standings or knockout output available")
           PY
           done
 
