@@ -6,7 +6,7 @@ on:
       competition_id:
         description: "FotMob competition IDs (comma-separated)"
         required: false
-        default: "87,55,54,53"
+        default: "42,73,10216"
         type: string
       season:
         description: "Optional FotMob season, e.g. 2026/2027"
