@@ -11,7 +11,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFont, features
 
 WIDTH = 1600
-MAX_HEIGHT = 2200
+MAX_HEIGHT = 2600
 MIN_HEIGHT = 760
 MARGIN_X = 90
 HEADER_H = 230
@@ -22,7 +22,7 @@ COMPETITION_GAP = 28
 MATCH_ROW_H = 142
 COMPACT_MATCH_ROW_H = 126
 TWO_COLUMN_THRESHOLD = 11
-MAX_MATCHES_PER_COLUMN = 10
+MAX_MATCHES_PER_COLUMN = 10  # Hard cap; page height below is sized to fit 10 compact cards.
 
 KNOCKOUT_COMPETITION_IDS = {
     "132", "133", "138", "139", "141", "207", "247", "8924", "11015", "222", "134", "209",
