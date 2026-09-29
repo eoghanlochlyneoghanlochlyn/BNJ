@@ -52,6 +52,21 @@ def _shootout_marker(node):
     return False
 
 
+
+def _recursive_values(node, target_keys):
+    found = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in target_keys:
+                found.append(value)
+            if isinstance(value, (dict, list)):
+                found.extend(_recursive_values(value, target_keys))
+    elif isinstance(node, list):
+        for value in node:
+            if isinstance(value, (dict, list)):
+                found.extend(_recursive_values(value, target_keys))
+    return found
+
 def _shootout_sections(node, result=None):
     if result is None:
         result = []
@@ -96,6 +111,16 @@ def _shootout_score(details):
             result = _coerce_score_pair(content.get(key))
             if result:
                 return result
+
+    # FotMob can place the shootout score several levels below content,
+    # so search the entire payload for explicit score fields before
+    # counting individual shootout kicks.
+    for node in (details, content):
+        for key in ("penaltyScore", "penalty_score", "shootoutScore", "shootout_score"):
+            for value in _recursive_values(node, {key}):
+                result = _coerce_score_pair(value)
+                if result:
+                    return result
 
     sections = _shootout_sections(content)
     facts = content.get("matchFacts")
