@@ -338,7 +338,10 @@ def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
         if language:
             kwargs["language"] = language
 
-        bbox = draw.textbbox((token_right, y), token, font=font, **kwargs)
+        bbox_kwargs = {"font": font, "anchor": "ra", "direction": direction}
+        if language:
+            bbox_kwargs["language"] = language
+        bbox = draw.textbbox((token_right, y), token, **bbox_kwargs)
         ink_center = (bbox[1] + bbox[3]) / 2
         draw_y = y + (y - ink_center)
         draw.text((token_right, draw_y), token, font=font, **kwargs)
