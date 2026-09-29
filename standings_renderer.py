@@ -659,10 +659,14 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
     away_logo = _team_logo(away_id)
 
     score, home_penalty, away_penalty = _knockout_match_score(matchup)
-    score_x = x + 44
+    # Keep the score/shootout block clearly separated from the team-name area.
+    # The shootout suffix is wider than the normal score, so reserve a fixed
+    # left-side column for the complete "score (penalty)" block.
+    score_x = x + 28
     name_right = x + w - 22
-    home_y = y + 32
-    away_y = y + 82
+    score_column_right = x + 112
+    home_y = y + 30
+    away_y = y + 94
 
     def team_row(yy, name, logo, score_value, penalty_value):
         logo_width = logo.width if logo else 0
@@ -673,7 +677,7 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
         else:
             text_right = name_right
 
-        text_left = score_x + 30
+        text_left = score_column_right + 14
         font, name_direction, name_language = _fit_knockout_name(
             draw, name, text_right, text_left
         )
