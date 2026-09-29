@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from standings import _extract_tables, _normalize_rows, all_groups_complete, group_stage_complete, is_grouped_standings
-from standings_renderer import render_group_standings, render_standings
+from standings_renderer import _group_display_name, render_group_standings, render_standings
 
 
 class StandingsTests(unittest.TestCase):
@@ -99,6 +99,39 @@ class StandingsTests(unittest.TestCase):
         }
         self.assertFalse(group_stage_complete(table))
         self.assertFalse(all_groups_complete({"tables": [table, table]}))
+
+    def test_best_third_title_is_persian(self):
+        self.assertEqual(_group_display_name("Best 3rd placed teams"), "برترین تیم های سوم")
+
+    def test_render_compact_combined_group_poster_with_all_third_place_teams(self):
+        def row(i):
+            return {
+                "rank": i, "teamId": str(9000 + i), "teamName": f"Team {i}",
+                "played": 3, "wins": 2, "draws": 0, "losses": 1,
+                "goalsFor": 5, "goalsAgainst": 3, "goalDiff": 2, "points": 6,
+            }
+
+        tables = [
+            {"group": f"Grp. {chr(65 + i)}", "rows": [row(j) for j in range(1, 5)]}
+            for i in range(12)
+        ]
+        tables.append({
+            "group": "Best 3rd placed teams",
+            "rows": [row(i) for i in range(1, 13)],
+        })
+        data = {
+            "competitionId": "77", "competitionName": "World Cup",
+            "season": "2026", "tables": tables,
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "combined.png"
+            render_standings(data, dt.date(2026, 9, 29), output)
+            self.assertTrue(output.exists())
+            from PIL import Image
+            with Image.open(output) as image:
+                self.assertEqual(image.size[0], 1600)
+                self.assertLess(image.size[1], 3000)
 
     def test_render_individual_group(self):
         rows = []
