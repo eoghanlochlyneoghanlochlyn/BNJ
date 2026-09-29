@@ -22,6 +22,11 @@ COMPETITION_GAP = 28
 MATCH_ROW_H = 142
 COMPACT_MATCH_ROW_H = 126
 TWO_COLUMN_THRESHOLD = 9
+MAX_MATCHES_PER_COLUMN = 10
+
+KNOCKOUT_COMPETITION_IDS = {
+    "132", "133", "138", "139", "141", "207", "247", "8924", "11015", "222", "134",
+}
 
 BG = (9, 17, 33)
 CARD = (20, 32, 52)
@@ -72,6 +77,8 @@ COMPETITION_FA = {
     "Copa America": "کوپا آمریکا", "Copa Libertadores": "کوپا لیبرتادورس",
     "Friendlies": "بازی دوستانه", "Friendly": "بازی دوستانه",
     "Italian Super Cup": "سوپرکاپ ایتالیا", "Supercoppa Italiana": "سوپرکاپ ایتالیا", "Super Cup Italy": "سوپرکاپ ایتالیا",
+    "Trophée des Champions": "سوپرجام فرانسه", "Trophée des champions": "سوپرجام فرانسه",
+    "Trophee des Champions": "سوپرجام فرانسه", "Trophee des champions": "سوپرجام فرانسه",
     "AFC Champions League Elite": "لیگ نخبگان آسیا", "AFC Champions League Two": "لیگ قهرمانان آسیا ۲",
 }
 
@@ -202,6 +209,9 @@ def _competition_name(match: dict) -> str:
 
     if english in COMPETITION_FA:
         return COMPETITION_FA[english]
+
+    if english.casefold() in {"trophée des champions", "trophee des champions"}:
+        return "سوپرجام فرانسه"
 
     normalized = " ".join(english.casefold().replace("-", " ").split())
     for key, value in COMPETITION_FA.items():
@@ -364,6 +374,22 @@ def _match_stage(match: dict) -> str:
     if not text:
         return ""
     low = text.casefold()
+
+    # Knockout competitions must never display a numeric round as a league
+    # week. FotMob can expose domestic-cup rounds as a bare number.
+    competition_id = str(
+        match.get("leagueId")
+        or match.get("competitionId")
+        or match.get("tournamentId")
+        or ""
+    )
+    if competition_id in KNOCKOUT_COMPETITION_IDS:
+        if text.isdigit():
+            return f"راند {_to_persian_digits(text)}"
+        if low.startswith(("week ", "matchweek ", "match day ", "matchday ")):
+            digits = "".join(ch for ch in text if ch.isdigit())
+            if digits:
+                return f"راند {_to_persian_digits(digits)}"
     # Explicit knockout stages take precedence over generic "Round" handling.
     normalized = re.sub(r"\\s+", " ", low).strip()
     knockout = {
@@ -731,23 +757,30 @@ def render_fixtures(matches: list[dict], day: dt.date, output: Path) -> None:
     pages = []
     current = []
     used = [0, 0] if use_two_columns else [0]
+    match_counts = [0, 0] if use_two_columns else [0]
 
     for competition, items in groups:
         comp_h = header_h + len(items) * row_h + max(0, len(items)-1)
         if use_two_columns:
-            target = 0 if used[0] <= used[1] else 1
-            needed = comp_h + (COMPETITION_GAP if used[target] else 0)
-            if used[target] and used[target] + needed > usable_h:
-                other = 1 - target
-                if used[other] + comp_h + (COMPETITION_GAP if used[other] else 0) <= usable_h:
-                    target = other
-                else:
-                    pages.append(current)
-                    current = []
-                    used = [0, 0]
-                    target = 0
+            target = None
+            for candidate in sorted((0, 1), key=lambda col: (match_counts[col], used[col])):
+                needed = comp_h + (COMPETITION_GAP if used[candidate] else 0)
+                if match_counts[candidate] + len(items) <= MAX_MATCHES_PER_COLUMN and (
+                    not used[candidate] or used[candidate] + needed <= usable_h
+                ):
+                    target = candidate
+                    break
+
+            if target is None:
+                pages.append(current)
+                current = []
+                used = [0, 0]
+                match_counts = [0, 0]
+                target = 0
+
             current.append((competition, items, target))
             used[target] += comp_h + (COMPETITION_GAP if used[target] else 0)
+            match_counts[target] += len(items)
         else:
             needed = comp_h + (COMPETITION_GAP if current else 0)
             if current and used[0] + needed > usable_h:
