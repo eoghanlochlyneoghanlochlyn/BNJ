@@ -45,6 +45,7 @@ LOGO_SIZE = 76
 LOGO_TIMEOUT = 5
 _logo_cache: dict[str, Image.Image | None] = {}
 _team_fa_cache: dict[str, str] | None = None
+_competition_fa_cache: dict[str, str] | None = None
 TEAMS_FA_URL = "https://raw.githubusercontent.com/eoghanlochlyneoghanlochlyn/Ftbllrslts/main/teams.json"
 
 WORLD_COMPETITION_IDS = {"77": "جام جهانی", "78": "جام جهانی باشگاه‌ها"}
@@ -128,6 +129,37 @@ def _load_team_fa() -> dict[str, str]:
     return mapping
 
 
+def _load_competition_fa() -> dict[str, str]:
+    global _competition_fa_cache
+    if _competition_fa_cache is not None:
+        return _competition_fa_cache
+
+    mapping: dict[str, str] = {}
+    path = Path(__file__).with_name("competitions.json")
+    try:
+        import json
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    competition_id = str(item.get("id") or "")
+                    persian = str(item.get("persian") or "").strip()
+                    if competition_id and persian:
+                        mapping[competition_id] = persian
+    except (OSError, ValueError):
+        pass
+
+    # Project-specific display names.
+    mapping["11015"] = "سوپرکاپ ایتالیا"
+    mapping["9806"] = "لیگ ملت‌های اروپا A"
+    mapping["9807"] = "لیگ ملت‌های اروپا B"
+    mapping["9808"] = "لیگ ملت‌های اروپا C"
+    mapping["9809"] = "لیگ ملت‌های اروپا D"
+
+    _competition_fa_cache = mapping
+    return mapping
+
+
 def _team_name(value: object) -> str:
     if isinstance(value, dict):
         team_id = str(value.get("id") or value.get("teamId") or "")
@@ -149,24 +181,28 @@ def _competition_name(match: dict) -> str:
         or match.get("tournamentId")
         or ""
     )
-    if competition_id in WORLD_COMPETITION_IDS:
-        return WORLD_COMPETITION_IDS[competition_id]
-    if competition_id in NATIONS_LEAGUE_LEVELS:
-        return NATIONS_LEAGUE_LEVELS[competition_id]
+
+    by_id = _load_competition_fa()
+    if competition_id in by_id:
+        return by_id[competition_id]
 
     english = str(
-        match.get("competition")
-        or match.get("competitionName")
+        match.get("competitionName")
+        or match.get("competition")
         or match.get("league")
         or "نامشخص"
     ).strip()
+
     if english in COMPETITION_FA:
         return COMPETITION_FA[english]
-    for key, value in COMPETITION_FA.items():
-        if key.casefold() in english.casefold():
-            return value
-    return english
 
+    normalized = " ".join(english.casefold().replace("-", " ").split())
+    for key, value in COMPETITION_FA.items():
+        key_normalized = " ".join(key.casefold().replace("-", " ").split())
+        if normalized == key_normalized or key_normalized in normalized:
+            return value
+
+    return english
 
 def _to_persian_digits(value: str) -> str:
     return str(value).translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
