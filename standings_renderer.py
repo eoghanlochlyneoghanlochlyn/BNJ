@@ -181,6 +181,8 @@ def _draw_table(draw, image, x1, y, x2, table):
             center = (left + right) / 2
             if key == "team":
                 team_id = str(row.get("teamId") or "")
+                team_right = right - 18
+                logo_x = team_right - LOGO_SIZE - 14
                 logo = _team_logo(team_id)
                 if logo:
                     image.alpha_composite(logo, (int(logo_x), int(row_y + (ROW_H - logo.height) / 2)))
@@ -190,8 +192,6 @@ def _draw_table(draw, image, x1, y, x2, table):
                         "name": row.get("teamName") or "—",
                     }
                 )
-                team_right = right - 18
-                logo_x = team_right - LOGO_SIZE - 14
                 _draw_text(
                     draw,
                     (logo_x - 14, row_y + ROW_H / 2),
