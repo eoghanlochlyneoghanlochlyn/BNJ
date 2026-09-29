@@ -25,7 +25,7 @@ TWO_COLUMN_THRESHOLD = 11
 MAX_MATCHES_PER_COLUMN = 10  # Hard cap; page height below is sized to fit 10 compact cards.
 
 KNOCKOUT_COMPETITION_IDS = {
-    "132", "133", "138", "139", "141", "207", "247", "8924", "11015", "222", "134", "209",
+    "132", "133", "138", "139", "141", "207", "935524", "247", "8924", "11015", "222", "134", "209",
 }
 
 BG = (9, 17, 33)
@@ -163,7 +163,8 @@ def _load_competition_fa() -> dict[str, str]:
     mapping["9807"] = "لیگ ملت‌های اروپا B"
     mapping["9808"] = "لیگ ملت‌های اروپا C"
     mapping["9809"] = "لیگ ملت‌های اروپا D"
-    mapping["207"] = "سوپرکاپ فرانسه"
+    mapping["207"] = "سوپرجام فرانسه"
+    mapping["935524"] = "سوپرجام فرانسه"
 
     _competition_fa_cache = mapping
     return mapping
@@ -207,7 +208,7 @@ def _competition_name(match: dict) -> str:
         .replace("è", "e")
         .split()
     )
-    if competition_id == "207" or any(
+    if competition_id in {"207", "935524"} or any(
         normalized == name or normalized.startswith(name + " ")
         for name in (
             "trophee des champions",
