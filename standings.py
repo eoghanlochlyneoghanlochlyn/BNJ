@@ -255,6 +255,144 @@ def all_groups_complete(data: dict) -> bool:
 
     return all(group_stage_complete(table) for table in group_tables)
 
+def _extract_knockout_rounds(data: dict) -> list[dict]:
+    """Extract FotMob knockout/playoff rounds from the league payload."""
+    found: list[list[dict]] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            rounds = value.get("rounds")
+            if isinstance(rounds, list):
+                valid = [
+                    item for item in rounds
+                    if isinstance(item, dict) and isinstance(item.get("matchups"), list)
+                ]
+                if valid:
+                    found.append(valid)
+            for child in value.values():
+                if isinstance(child, (dict, list)):
+                    walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                if isinstance(child, (dict, list)):
+                    walk(child)
+
+    walk(data)
+
+    rounds: list[dict] = []
+    seen: set[str] = set()
+    for candidate in found:
+        for item in candidate:
+            signature = repr(item)
+            if signature in seen:
+                continue
+            seen.add(signature)
+            rounds.append(item)
+    return rounds
+
+
+def _knockout_stage_label(round_data: dict) -> str:
+    """Normalize FotMob knockout stage names to Persian display labels."""
+    raw = _clean(
+        round_data.get("stage")
+        or round_data.get("name")
+        or round_data.get("roundName")
+        or round_data.get("label")
+    )
+    low = raw.casefold()
+    mapping = {
+        "playoff": "پلی‌آف",
+        "play-offs": "پلی‌آف",
+        "play off": "پلی‌آف",
+        "round of 64": "یک‌شصت‌وچهارم نهایی",
+        "round of 32": "یک‌شانزدهم نهایی",
+        "round of 16": "یک‌هشتم نهایی",
+        "quarterfinal": "یک‌چهارم نهایی",
+        "quarter-finals": "یک‌چهارم نهایی",
+        "quarterfinals": "یک‌چهارم نهایی",
+        "semifinal": "نیمه‌نهایی",
+        "semi-finals": "نیمه‌نهایی",
+        "semifinals": "نیمه‌نهایی",
+        "final": "فینال",
+        "third place": "رده‌بندی",
+        "third-place": "رده‌بندی",
+    }
+    if low in mapping:
+        return mapping[low]
+
+    participant_count = _as_int(round_data.get("participantCount"))
+    return {
+        64: "یک‌شصت‌وچهارم نهایی",
+        32: "یک‌شانزدهم نهایی",
+        16: "یک‌هشتم نهایی",
+        8: "یک‌چهارم نهایی",
+        4: "نیمه‌نهایی",
+        2: "فینال",
+    }.get(participant_count, raw or "مرحله حذفی")
+
+
+def _normalize_knockout_round(round_data: dict) -> dict | None:
+    matchups = round_data.get("matchups")
+    if not isinstance(matchups, list):
+        return None
+
+    normalized: list[dict] = []
+    for index, raw in enumerate(matchups, start=1):
+        if not isinstance(raw, dict):
+            continue
+        home = raw.get("home") if isinstance(raw.get("home"), dict) else {}
+        away = raw.get("away") if isinstance(raw.get("away"), dict) else {}
+        normalized.append({
+            "number": _as_int(raw.get("drawOrder")) or index,
+            "homeTeamId": str(raw.get("homeTeamId") or home.get("id") or ""),
+            "awayTeamId": str(raw.get("awayTeamId") or away.get("id") or ""),
+            "homeTeam": _clean(raw.get("homeTeam") or home.get("name")),
+            "awayTeam": _clean(raw.get("awayTeam") or away.get("name")),
+            "homeScore": _as_int(raw.get("homeScore")),
+            "awayScore": _as_int(raw.get("awayScore")),
+            "winner": str(raw.get("winner") or ""),
+            "bestOf": _as_int(raw.get("bestOf")) or 1,
+            "tbdTeam1": bool(raw.get("tbdTeam1")),
+            "tbdTeam2": bool(raw.get("tbdTeam2")),
+            "matches": raw.get("matches") if isinstance(raw.get("matches"), list) else [],
+            "raw": raw,
+        })
+
+    if not normalized:
+        return None
+    return {
+        "stage": _knockout_stage_label(round_data),
+        "participantCount": _as_int(round_data.get("participantCount")),
+        "matchups": normalized,
+        "raw": round_data,
+    }
+
+
+def _extract_knockout(data: dict) -> list[dict]:
+    result: list[dict] = []
+    seen: set[tuple] = set()
+    for round_data in _extract_knockout_rounds(data):
+        normalized = _normalize_knockout_round(round_data)
+        if not normalized:
+            continue
+        signature = (
+            normalized["stage"],
+            tuple(
+                (m["homeTeamId"], m["awayTeamId"], m["number"])
+                for m in normalized["matchups"]
+            ),
+        )
+        if signature in seen:
+            continue
+        seen.add(signature)
+        result.append(normalized)
+    return result
+
+
+def has_knockout(data: dict) -> bool:
+    return bool(data.get("knockoutRounds"))
+
+
 def fetch_standings(competition_id: str, season: str | None = None) -> dict:
     params = {"id": str(competition_id)}
     if season:
@@ -273,11 +411,10 @@ def fetch_standings(competition_id: str, season: str | None = None) -> dict:
         raise RuntimeError(f"FotMob standings response is not an object: {competition_id}")
 
     tables = _extract_tables(data)
-    if not tables:
+    knockout_rounds = _extract_knockout(data)
+    if not tables and not knockout_rounds:
         raise RuntimeError(
-            f"No standings table found for FotMob competition {competition_id}. "
-            "This competition may use a group/league-phase/knockout structure "
-            "that will be handled by the next standings modules."
+            f"No standings or knockout data found for FotMob competition {competition_id}."
         )
 
     cid, name = _extract_competition(data, str(competition_id))
@@ -298,6 +435,7 @@ def fetch_standings(competition_id: str, season: str | None = None) -> dict:
         "competitionName": name,
         "season": selected_season,
         "tables": tables,
+        "knockoutRounds": knockout_rounds,
         "fetchedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
     }
 
