@@ -80,11 +80,17 @@ def _normalize_match(raw: dict, league: dict) -> dict | None:
     if start_utc is None:
         return None
 
+    # FotMob's daily endpoint can expose primaryId as a parent/primary
+    # competition while the actual competition ID is in the raw match or
+    # league object. Prefer the match/league's concrete competition ID.
     league_id = (
-        league.get("primaryId")
+        raw.get("leagueId")
+        or raw.get("competitionId")
+        or raw.get("tournamentId")
+        or league.get("id")
         or league.get("leagueId")
         or league.get("competitionId")
-        or league.get("id")
+        or league.get("primaryId")
     )
 
     competition_name = _clean(
@@ -140,11 +146,11 @@ def _normalize_match(raw: dict, league: dict) -> dict | None:
 def _stage_label(value: Any) -> str:
     """Extract an actual match round/group, never fabricate a group."""
     if isinstance(value, (int, float)):
-        return f"Week {int(value)}"
+        return str(int(value))
     if isinstance(value, str):
         text = value.strip()
         if text.isdigit():
-            return f"Week {int(text)}"
+            return text
         return text
     if isinstance(value, dict):
         for key in ("name", "displayName", "roundName", "groupName", "shortName", "stageName"):
@@ -158,7 +164,7 @@ def _stage_label(value: Any) -> str:
         for key in ("round", "matchweek", "matchday", "week", "roundNumber"):
             label = _stage_label(value.get(key))
             if label:
-                return label if not label.isdigit() else f"Week {label}"
+                return label
     return ""
 
 
@@ -201,10 +207,7 @@ def _extract_match_stage(details: dict) -> str:
                 if key in ("groupName", "group") and not label.lower().startswith("group"):
                     return f"Group {label}"
                 if key in ("matchRound", "leagueRoundName", "roundName", "round", "matchweek", "matchday", "week", "roundNumber"):
-                    if label.isdigit():
-                        return f"Week {label}"
-                    if label.lower().startswith("week"):
-                        return label
+                    return label
                 return label
 
     # Some FotMob match-details responses store the round several levels
