@@ -522,6 +522,141 @@ def _render_grouped_combined(data: dict, output: Path) -> None:
     image.convert("RGB").save(output, "PNG", optimize=True)
 
 
+
+def _knockout_team_name(name: str, team_id: str, tbd: bool) -> str:
+    if tbd or not str(name or "").strip():
+        return "تعیین نشده"
+    return _team_name({"id": team_id, "name": name})
+
+
+def _knockout_stage_font_size(stage: str) -> int:
+    return 31 if len(stage) <= 16 else 27
+
+
+def render_knockout_standings(data: dict, day, output: Path, stage: dict | None = None) -> None:
+    """Render FotMob knockout rounds as stage-by-stage matchup tables."""
+    rounds = [stage] if stage is not None else list(data.get("knockoutRounds") or [])
+    rounds = [item for item in rounds if isinstance(item, dict) and item.get("matchups")]
+    if not rounds:
+        raise ValueError("Cannot render knockout standings without matchups.")
+
+    competition_id = str(data.get("competitionId") or "")
+    competition = _competition_display_name(
+        competition_id, str(data.get("competitionName") or "")
+    )
+    season = str(data.get("season") or "فصل جاری")
+
+    stage_gap = 28
+    stage_title_h = 64
+    matchup_h = 116
+    content_h = sum(
+        stage_title_h + len(item["matchups"]) * matchup_h
+        for item in rounds
+    ) + stage_gap * max(0, len(rounds) - 1)
+    height = max(760, HEADER_H + content_h + 100)
+
+    image = Image.new("RGBA", (WIDTH, height), BG + (255,))
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle(
+        (MARGIN_X, 34, WIDTH - MARGIN_X, 42),
+        radius=4,
+        fill=ACCENT,
+    )
+    draw.line(
+        (MARGIN_X, HEADER_H - 22, WIDTH - MARGIN_X, HEADER_H - 22),
+        fill=BORDER,
+        width=2,
+    )
+
+    _draw_standings_title(draw, WIDTH - MARGIN_X, 108, f"حذفی {competition}")
+    _draw_text(
+        draw,
+        (MARGIN_X, 108),
+        season.replace("2026/2027", "2026/27"),
+        _latin_font(27, True),
+        MUTED,
+        "lm",
+        "ltr",
+    )
+
+    y = HEADER_H
+    for round_data in rounds:
+        stage_name = str(round_data.get("stage") or "مرحله حذفی")
+        box_h = stage_title_h + len(round_data["matchups"]) * matchup_h
+        x1, x2 = MARGIN_X, WIDTH - MARGIN_X
+
+        draw.rounded_rectangle(
+            (x1, y, x2, y + box_h),
+            radius=CARD_RADIUS,
+            fill=CARD,
+            outline=BORDER,
+            width=2,
+        )
+        draw.rounded_rectangle(
+            (x1 + 14, y + 13, x1 + 21, y + stage_title_h - 12),
+            radius=3,
+            fill=ACCENT,
+        )
+        _draw_text(
+            draw,
+            (x2 - 24, y + stage_title_h / 2),
+            stage_name,
+            _font(_knockout_stage_font_size(stage_name), True),
+            TEXT,
+            "rm",
+        )
+        draw.line(
+            (x1 + 18, y + stage_title_h, x2 - 18, y + stage_title_h),
+            fill=BORDER,
+            width=2,
+        )
+
+        for index, matchup in enumerate(round_data["matchups"]):
+            row_y = y + stage_title_h + index * matchup_h
+            if index:
+                draw.line((x1 + 32, row_y, x2 - 32, row_y), fill=BORDER, width=1)
+
+            _draw_text(
+                draw,
+                (x1 + 38, row_y + matchup_h / 2),
+                _persian_digits(matchup.get("number", index + 1)),
+                _font(26, True),
+                MUTED,
+                "lm",
+                "ltr",
+            )
+
+            center_x = (x1 + x2) // 2
+            home_score = matchup.get("homeScore")
+            away_score = matchup.get("awayScore")
+            score_text = (
+                "—" if home_score is None or away_score is None
+                else f"{_persian_digits(home_score)} - {_persian_digits(away_score)}"
+            )
+            score_label = "مجموع" if int(matchup.get("bestOf") or 1) > 1 else "نتیجه"
+            _draw_text(draw, (center_x, row_y + 43), score_text, _latin_font(31, True), TEXT, "mm", "ltr")
+            _draw_text(draw, (center_x, row_y + 78), score_label, _font(20, True), MUTED, "mm")
+
+            home_id = str(matchup.get("homeTeamId") or "")
+            away_id = str(matchup.get("awayTeamId") or "")
+            home_name = _knockout_team_name(matchup.get("homeTeam", ""), home_id, matchup.get("tbdTeam1", False))
+            away_name = _knockout_team_name(matchup.get("awayTeam", ""), away_id, matchup.get("tbdTeam2", False))
+
+            home_logo = _team_logo(home_id)
+            away_logo = _team_logo(away_id)
+            home_x = center_x + 330
+            away_x = center_x - 330
+            for tx, name, logo in ((home_x, home_name, home_logo), (away_x, away_name, away_logo)):
+                if logo:
+                    image.alpha_composite(logo, (int(tx - logo.width / 2), int(row_y + 20)))
+                _draw_text(draw, (tx, row_y + 91), name, _font(25, True), TEXT, "mm")
+
+        y += box_h + stage_gap
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image.convert("RGB").save(output, "PNG", optimize=True)
+
+
 def render_standings(data: dict, day, output: Path, title_suffix: str | None = None) -> None:
     if not features.check("raqm"):
         raise RuntimeError("Pillow was built without libraqm; Persian RTL rendering cannot be trusted.")
