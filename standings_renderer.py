@@ -119,7 +119,7 @@ def _draw_table(draw, image, x1, y, x2, table):
 
     positions = {}
     cursor = x2
-    for key in ("points", "gd", "ga", "gf", "losses", "draws", "wins", "played", "team", "rank"):
+    for key in ("rank", "team", "played", "wins", "draws", "losses", "gf", "ga", "gd", "points"):
         cursor -= widths[key]
         positions[key] = (cursor, cursor + widths[key])
 
