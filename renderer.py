@@ -325,8 +325,8 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
         # This prevents long names from ever colliding with a logo or clock.
         mid_x = (x1 + x2) // 2
         width = x2 - x1
-        home_x = x1 + width * 0.28
-        away_x = x1 + width * 0.72
+        home_x = x1 + width * 0.72
+        away_x = x1 + width * 0.28
         logo_y = y1 + 42
         name_y = y1 + 91
 
@@ -511,8 +511,8 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     away_name_right = right_logo_x - logo_size//2 - name_gap
 
     for team_id, logo_x in (
-        (_team_id(match.get("home")), left_logo_x),
-        (_team_id(match.get("away")), right_logo_x),
+        (_team_id(match.get("away")), left_logo_x),
+        (_team_id(match.get("home")), right_logo_x),
     ):
         logo = _load_logo(team_id)
         if logo is not None:
@@ -571,8 +571,8 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
             )
             top += h + gap
 
-    draw_name(home, home_name_left, home_name_right)
-    draw_name(away, away_name_left, away_name_right)
+    draw_name(away, home_name_left, home_name_right)
+    draw_name(home, away_name_left, away_name_right)
 
     time_font = _font(29 if '(' in kickoff else 36, True)
     draw.rounded_rectangle(
