@@ -656,3 +656,138 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
 
 
 
+
+
+def render_standings(data: dict, day, output: Path, title_suffix: str | None = None) -> None:
+    if not features.check("raqm"):
+        raise RuntimeError("Pillow was built without libraqm; Persian RTL rendering cannot be trusted.")
+
+    tables = data.get("tables") or []
+    if not tables:
+        raise ValueError("Cannot render standings without tables.")
+
+    # Grouped competitions are rendered vertically, one complete table
+    # after another. This preserves the original poster structure and
+    # guarantees that every group and every auxiliary table remains visible.
+    competition_id = str(data.get("competitionId") or "")
+    english_name = str(data.get("competitionName") or "")
+    competition = _competition_display_name(competition_id, english_name)
+    season = str(data.get("season") or "فصل جاری")
+
+    card_height = 0
+    for table in tables:
+        card_height += HEADER_ROW_H + ROW_H * len(table["rows"]) + 26
+        if table.get("group"):
+            card_height += 54
+
+    height = max(760, HEADER_H + card_height + 90)
+    image = Image.new("RGBA", (WIDTH, height), BG + (255,))
+    draw = ImageDraw.Draw(image)
+
+    draw.rounded_rectangle((MARGIN_X, 34, WIDTH - MARGIN_X, 42), radius=4, fill=ACCENT)
+    draw.line((MARGIN_X, HEADER_H - 22, WIDTH - MARGIN_X, HEADER_H - 22), fill=BORDER, width=2)
+
+    title_y = 108
+    title_right = WIDTH - MARGIN_X
+    title_text = f"جدول {competition}"
+    if title_suffix:
+        title_text = f"{title_text} {_group_display_name(title_suffix)}"
+    title_width = _draw_standings_title(draw, title_right, title_y, title_text)
+
+    season_text = season.replace("2026/2027", "2026/27") if season else ""
+    season_font = _latin_font(27, True)
+
+    season_gap = 20
+    season_right = title_right - title_width - season_gap
+    if season_text:
+        _draw_text(
+            draw,
+            (season_right, title_y),
+            season_text,
+            season_font,
+            MUTED,
+            "rm",
+            "ltr",
+        )
+
+    season_bbox = draw.textbbox(
+        (0, 0),
+        season_text,
+        font=season_font,
+        anchor="rm",
+        direction="ltr",
+        language="en",
+    ) if season_text else (0, 0, 0, 0)
+    season_width = season_bbox[2] - season_bbox[0]
+
+    logo_gap = 18
+    league_logo = _league_logo(competition_id)
+    if league_logo:
+        logo_x = season_right - season_width - logo_gap - league_logo.width
+        logo_y = title_y - league_logo.height / 2
+        image.alpha_composite(league_logo, (int(logo_x), int(logo_y)))
+
+    y = HEADER_H
+    for index, table in enumerate(tables):
+        x1, x2 = MARGIN_X, WIDTH - MARGIN_X
+        group = _group_display_name(table.get("group"))
+
+        extra = 0
+        if group:
+            group_match = re.fullmatch(r"(گروه) ([A-Za-z0-9]+)", group)
+            if group_match:
+                group_word, group_label = group_match.groups()
+                group_label_font = _latin_font(29, True) if group_label.isalpha() else _font(29, True)
+                label_bbox = draw.textbbox(
+                    (x2 - 24, y + 26),
+                    group_label,
+                    font=group_label_font,
+                    anchor="ra",
+                    direction="ltr",
+                )
+                label_width = label_bbox[2] - label_bbox[0]
+                _draw_text(
+                    draw,
+                    (x2 - 24 - label_width - 10, y + 26),
+                    group_word,
+                    _font(29, True),
+                    TEXT,
+                    "ra",
+                )
+                draw.text(
+                    (x2 - 24, y + 26),
+                    group_label,
+                    font=group_label_font,
+                    fill=TEXT,
+                    anchor="ra",
+                    direction="ltr",
+                )
+            else:
+                _draw_text(draw, (x2 - 24, y + 26), group, _font(29, True), TEXT, "ra")
+            extra = 54
+
+        table_y = y + extra
+        table_bottom = table_y + HEADER_ROW_H + ROW_H * len(table["rows"])
+        draw.rounded_rectangle(
+            (x1, y, x2, table_bottom + 18),
+            radius=CARD_RADIUS,
+            fill=CARD,
+            outline=BORDER,
+            width=2,
+        )
+        _draw_table(draw, image, x1 + 16, table_y + 2, x2 - 16, table)
+        y = table_bottom + 44
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image.convert("RGB").save(output, "PNG", optimize=True)
+
+
+def render_group_standings(data: dict, table: dict, day, output: Path) -> None:
+    """Render exactly one group as an independent poster."""
+    group = _group_display_name(table.get("group"))
+    if not group:
+        raise ValueError("Cannot render an individual group without a group name.")
+
+    group_data = dict(data)
+    group_data["tables"] = [table]
+    render_standings(group_data, day, output, title_suffix=group)
