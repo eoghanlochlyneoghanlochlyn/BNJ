@@ -622,7 +622,10 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     draw_name(away, home_name_left, home_name_right)
     draw_name(home, away_name_left, away_name_right)
 
-    time_font = _font(29 if '(' in kickoff else 36, True)
+    # Scores are an atomic LTR token. Use a Latin-capable font so the
+    # parentheses in shootout notation such as 2 (4) 3 are real glyphs,
+    # not missing-glyph boxes produced by Arabic RTL shaping.
+    time_font = _latin_font(29 if '(' in kickoff else 36, True)
     draw.rounded_rectangle(
         (mid_x-clock_width//2, mid_y-24,
          mid_x+clock_width//2, mid_y+24),
@@ -630,13 +633,13 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     )
     bbox = draw.textbbox(
         (0,0), kickoff, font=time_font,
-        direction="rtl", language="fa",
+        direction="ltr",
     )
     tw, th = bbox[2]-bbox[0], bbox[3]-bbox[1]
     draw.text(
         (mid_x-tw/2-bbox[0], mid_y-th/2-bbox[1]),
         kickoff, font=time_font, fill=(255,255,255),
-        direction="rtl", language="fa",
+        direction="ltr",
     )
 
     if stage:
