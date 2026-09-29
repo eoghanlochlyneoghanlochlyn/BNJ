@@ -20,6 +20,7 @@ MATCH_IDS = [
     "5749694",
     "5802952",
     "5881180",
+    "5740646",  # French Super Cup: Lens vs Paris Saint-Germain
 ]
 
 
