@@ -247,51 +247,55 @@ def _kickoff(match: dict) -> str:
 
 def _result_label_for_rtl(match: dict) -> str:
     """
-    Return the result in the same visual order as the teams in the poster.
+    Build the score in the same left-to-right visual order as the poster.
 
-    The poster is RTL, so the away team is on the left and the home team is
-    on the right. FotMob's numeric result is home-away. Therefore a result
-    such as "2 (4) 3" (home 2, away 3; home won 4-3 on penalties) must be
-    displayed visually as "3 2 (4)" so each number sits next to its team.
+    The poster places AWAY on the left and HOME on the right. FotMob's
+    resultLabel is stored in logical HOME-AWAY order, so the presentation
+    token must be reversed before it is drawn.
 
-    This function only changes the presentation order; it never changes the
-    underlying match data.
+    Supported forms:
+      HOME - AWAY
+      HOME:AWAY
+      HOME (PEN_HOME-PEN_AWAY) AWAY
     """
     raw = str(match.get("resultLabel") or "").strip()
     if not raw:
         return _kickoff(match)
 
-    # Match two score numbers, allowing a shootout value in parentheses.
-    # Examples handled:
-    #   2 - 1
-    #   2:1
-    #   2 (4) 3
-    #   2 (4) - 3 (3)
-    pattern = re.compile(
-        r"(?P<home>\\d+)(?:\\s*\\((?P<home_pen>\\d+)\\))?"
-        r"(?P<sep>\\s*[-–—:]\\s*|\\s+)"
-        r"(?P<away>\\d+)(?:\\s*\\((?P<away_pen>\\d+)\\))?"
+    # Important: this is deliberately a normal regex with a single
+    # backslash. Using "\\d" in a raw string would match a literal
+    # backslash + d and silently leave the score unchanged.
+    number = r"[0-9۰-۹]+"
+
+    # Shootout result: 1 (3-2) 1
+    shootout = re.search(
+        rf"(?P<home>{number})\\s*"
+        rf"\\((?P<home_pen>{number})\\s*[-–—:]\\s*(?P<away_pen>{number})\\)"
+        rf"\\s*(?P<away>{number})",
+        raw,
     )
-    match_result = pattern.search(raw)
-    if not match_result:
-        return raw
+    if shootout:
+        home = shootout.group("home")
+        home_pen = shootout.group("home_pen")
+        away_pen = shootout.group("away_pen")
+        away = shootout.group("away")
 
-    home_score = match_result.group("home")
-    home_pen = match_result.group("home_pen")
-    away_score = match_result.group("away")
-    away_pen = match_result.group("away_pen")
+        # AWAY is visually left, HOME visually right.
+        replacement = f"{away} ({away_pen}-{home_pen}) {home}"
+        return raw[:shootout.start()] + replacement + raw[shootout.end():]
 
-    left = away_score
-    if away_pen is not None:
-        left += f" ({away_pen})"
+    # Normal result: 2 - 1 / 2:1 / ۲ - ۱
+    normal = re.search(
+        rf"(?P<home>{number})\\s*[-–—:]\\s*(?P<away>{number})",
+        raw,
+    )
+    if normal:
+        home = normal.group("home")
+        away = normal.group("away")
+        replacement = f"{away} - {home}"
+        return raw[:normal.start()] + replacement + raw[normal.end():]
 
-    right = home_score
-    if home_pen is not None:
-        right += f" ({home_pen})"
-
-    # Keep the separator simple and deterministic for the graphic.
-    replacement = f"{left} - {right}"
-    return raw[:match_result.start()] + replacement + raw[match_result.end():]
+    return raw
 
 
 def _text_width(draw, text: str, font, direction: str = "rtl") -> float:
