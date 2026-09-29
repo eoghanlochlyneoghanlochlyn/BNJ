@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from standings import _extract_knockout, _extract_tables, _knockout_stage_label, _normalize_rows, all_groups_complete, group_stage_complete, has_knockout, is_grouped_standings
-from standings_renderer import _group_display_name, render_group_standings, render_knockout_standings, render_standings
+from standings_renderer import _ensure_full_knockout_bracket, _group_display_name, render_group_standings, render_knockout_standings, render_standings
 
 
 class StandingsTests(unittest.TestCase):
@@ -38,6 +38,32 @@ class StandingsTests(unittest.TestCase):
         self.assertEqual(_knockout_stage_label({"participantCount": 8}), "یک‌چهارم نهایی")
         self.assertEqual(_knockout_stage_label({"participantCount": 4}), "نیمه‌نهایی")
         self.assertEqual(_knockout_stage_label({"participantCount": 2}), "فینال")
+
+    def test_knockout_bracket_always_reaches_final(self):
+        rounds = _extract_knockout({"playoff": {"rounds": [
+            {"participantCount": 8, "stage": "quarterfinal", "matchups": [
+                {"drawOrder": i, "homeTeamId": str(1000 + i * 2),
+                 "awayTeamId": str(1001 + i * 2),
+                 "homeTeam": f"Home {i}", "awayTeam": f"Away {i}",
+                 "homeScore": 1, "awayScore": 0}
+                for i in range(1, 5)
+            ]},
+            {"participantCount": 4, "stage": "semifinal", "matchups": [
+                {"drawOrder": i, "homeTeamId": str(2000 + i * 2),
+                 "awayTeamId": str(2001 + i * 2),
+                 "homeTeam": f"SF Home {i}", "awayTeam": f"SF Away {i}",
+                 "homeScore": 2, "awayScore": 1}
+                for i in range(1, 3)
+            ]}
+        ]}})
+        full = _ensure_full_knockout_bracket(rounds)
+        self.assertEqual(
+            [item["stage"] for item in full],
+            ["یک‌چهارم نهایی", "نیمه‌نهایی", "فینال"],
+        )
+        self.assertEqual(len(full[-1]["matchups"]), 1)
+        self.assertTrue(full[-1]["placeholder"])
+        self.assertTrue(full[-1]["matchups"][0]["tbdTeam1"])
 
     def test_render_knockout_poster(self):
         rounds = _extract_knockout({"playoff": {"rounds": [
