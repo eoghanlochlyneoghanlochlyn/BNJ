@@ -534,19 +534,27 @@ def _knockout_stage_font_size(stage: str) -> int:
     return 31 if len(stage) <= 16 else 27
 
 
-def _knockout_match_score(matchup: dict) -> tuple[str, str | None]:
-    """Return the displayed match score and separate shootout score."""
+def _knockout_match_score(matchup: dict) -> tuple[str, str | None, str | None]:
+    """Return each team's normal score plus its shootout score."""
     home = matchup.get("homeScore")
     away = matchup.get("awayScore")
     if home is None or away is None:
-        return "—", None
+        return "—", None, None
+
     score = f"{_persian_digits(home)} - {_persian_digits(away)}"
     penalty = matchup.get("penaltyScore")
-    if isinstance(penalty, dict) and penalty.get("home") is not None and penalty.get("away") is not None:
-        penalty_text = f"پنالتی ({_persian_digits(penalty['home'])} - {_persian_digits(penalty['away'])})"
-    else:
-        penalty_text = None
-    return score, penalty_text
+    if (
+        isinstance(penalty, dict)
+        and penalty.get("home") is not None
+        and penalty.get("away") is not None
+    ):
+        return (
+            score,
+            _persian_digits(penalty["home"]),
+            _persian_digits(penalty["away"]),
+        )
+
+    return score, None, None
 
 
 def _fit_knockout_name(draw, name: str, right: float, left: float):
@@ -576,13 +584,13 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
     home_logo = _team_logo(home_id)
     away_logo = _team_logo(away_id)
 
-    score, penalty = _knockout_match_score(matchup)
+    score, home_penalty, away_penalty = _knockout_match_score(matchup)
     score_x = x + 44
     name_right = x + w - 22
     home_y = y + 32
     away_y = y + 82
 
-    def team_row(yy, name, logo, score_value):
+    def team_row(yy, name, logo, score_value, penalty_value):
         logo_width = logo.width if logo else 0
         if logo:
             logo_x = name_right - logo_width
@@ -594,18 +602,20 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
         text_left = score_x + 30
         font = _fit_knockout_name(draw, name, text_right, text_left)
         _draw_text(draw, (text_right, yy), name, font, TEXT, "rm")
+        score_text = _persian_digits(score_value) if score_value is not None else "—"
+        if penalty_value is not None:
+            score_text = f"{score_text} ({penalty_value})"
         _draw_text(
             draw, (score_x, yy),
-            _persian_digits(score_value) if score_value is not None else "—",
-            _font(27, True), TEXT, "lm", "ltr"
+            score_text,
+            _font(25, True),
+            TEXT,
+            "lm",
+            "ltr",
         )
 
-    team_row(home_y, home_name, home_logo, matchup.get("homeScore"))
-    team_row(away_y, away_name, away_logo, matchup.get("awayScore"))
-
-    if penalty:
-        _draw_text(draw, (x + w / 2, y + h - 11), penalty,
-                   _font(16, True), MUTED, "ms")
+    team_row(home_y, home_name, home_logo, matchup.get("homeScore"), home_penalty)
+    team_row(away_y, away_name, away_logo, matchup.get("awayScore"), away_penalty)
 
 def _knockout_stage_key(stage: dict) -> int:
     """Return the canonical tournament order for a knockout round."""
