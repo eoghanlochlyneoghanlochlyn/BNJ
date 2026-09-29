@@ -25,6 +25,10 @@ MATCH_IDS = [
     "5740646",  # Lens vs Paris Saint-Germain
     "5091465",  # Osasuna vs SD Huesca
     "5039109",  # Real Madrid vs Barcelona
+    "5868064",  # Sevilla vs Deportivo A Coruña
+    "5881154",  # Augsburg vs Eintracht Frankfurt
+    "5749675",  # Monza vs Lecce
+    "5802936",  # Monaco vs Strasbourg
 ]
 
 
@@ -82,7 +86,7 @@ def main():
     parser.add_argument("--send-telegram", action="store_true")
     args = parser.parse_args()
 
-    with ThreadPoolExecutor(max_workers=15) as pool:
+    with ThreadPoolExecutor(max_workers=19) as pool:
         matches = list(pool.map(load_match, MATCH_IDS))
 
     if len(matches) != len(MATCH_IDS):
@@ -102,7 +106,7 @@ def main():
         index += 1
 
     if args.send_telegram:
-        caption = "🏁 تست نتایج ۱۵ مسابقه تاریخی"
+        caption = "🏁 تست نتایج ۱۹ مسابقه تاریخی"
         if len(paths) == 1:
             send_photo(paths[0], caption)
         else:
