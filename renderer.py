@@ -190,16 +190,6 @@ def _competition_name(match: dict) -> str:
         or match.get("tournamentId")
         or ""
     )
-
-    by_id = _load_competition_fa()
-    if competition_id in by_id:
-        return by_id[competition_id]
-
-    # FotMob has historically exposed the Italian Super Cup under both
-    # competition IDs 11015 and 222. Treat both as the same competition.
-    if competition_id in {"11015", "222"}:
-        return "سوپرکاپ ایتالیا"
-
     english = str(
         match.get("competitionName")
         or match.get("competition")
@@ -207,13 +197,31 @@ def _competition_name(match: dict) -> str:
         or "نامشخص"
     ).strip()
 
+    # FotMob may provide a parent league ID for a specific cup match.
+    # Identify the French Super Cup by its exact competition name first,
+    # before any parent/primary league ID can incorrectly label it.
+    normalized = " ".join(
+        english.casefold()
+        .replace("-", " ")
+        .replace("é", "e")
+        .replace("è", "e")
+        .split()
+    )
+    if competition_id == "207" or normalized in {
+        "trophee des champions",
+        "french super cup",
+        "super cup france",
+        "supercoupe de france",
+    }:
+        return "سوپرجام فرانسه"
+
+    by_id = _load_competition_fa()
+    if competition_id in by_id:
+        return by_id[competition_id]
+
     if english in COMPETITION_FA:
         return COMPETITION_FA[english]
 
-    if english.casefold() in {"trophée des champions", "trophee des champions"}:
-        return "سوپرجام فرانسه"
-
-    normalized = " ".join(english.casefold().replace("-", " ").split())
     for key, value in COMPETITION_FA.items():
         key_normalized = " ".join(key.casefold().replace("-", " ").split())
         if normalized == key_normalized or key_normalized in normalized:
