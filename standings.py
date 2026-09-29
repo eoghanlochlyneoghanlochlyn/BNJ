@@ -84,7 +84,7 @@ def _normalize_rows(table: dict) -> list[dict]:
 
         result.append(
             {
-                "rank": _as_int(raw.get("idx") or raw.get("rank")) or index,
+                "rank": _as_int(raw.get("idx")) if raw.get("idx") is not None else (_as_int(raw.get("rank")) if raw.get("rank") is not None else index),
                 "teamId": str(raw.get("id") or raw.get("teamId") or ""),
                 "teamName": _clean(
                     raw.get("name")
@@ -92,14 +92,14 @@ def _normalize_rows(table: dict) -> list[dict]:
                     or raw.get("longName")
                     or raw.get("shortName")
                 ),
-                "played": _as_int(raw.get("played") or raw.get("matches")),
+                "played": _as_int(raw.get("played")) if raw.get("played") is not None else _as_int(raw.get("matches")),
                 "wins": _as_int(raw.get("wins")),
                 "draws": _as_int(raw.get("draws")),
                 "losses": _as_int(raw.get("losses")),
-                "goalsFor": _as_int(raw.get("goalsFor") or raw.get("gf")) if gf is None else gf,
-                "goalsAgainst": _as_int(raw.get("goalsAgainst") or raw.get("ga")) if ga is None else ga,
-                "goalDiff": _as_int(raw.get("goalConDiff") or raw.get("goalDiff")),
-                "points": _as_int(raw.get("pts") or raw.get("points")),
+                "goalsFor": _as_int(raw.get("goalsFor")) if raw.get("goalsFor") is not None else _as_int(raw.get("gf")) if gf is None else gf,
+                "goalsAgainst": _as_int(raw.get("goalsAgainst")) if raw.get("goalsAgainst") is not None else _as_int(raw.get("ga")) if ga is None else ga,
+                "goalDiff": _as_int(raw.get("goalConDiff")) if raw.get("goalConDiff") is not None else _as_int(raw.get("goalDiff")),
+                "points": _as_int(raw.get("pts")) if raw.get("pts") is not None else _as_int(raw.get("points")),
                 "form": raw.get("form") if isinstance(raw.get("form"), list) else None,
                 "raw": raw,
             }
