@@ -6,7 +6,7 @@ on:
       competition_id:
         description: "FotMob competition IDs (comma-separated)"
         required: false
-        default: "525,9806,9807,9808,9809"
+        default: "50,77,290,44"
         type: string
       season:
         description: "Optional FotMob season, e.g. 2026/2027"
@@ -84,10 +84,3 @@ jobs:
           for path in sorted(Path("output/standings").glob("*.png")):
               send_photo(path, "📊 جدول رقابت")
           PY
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: bnj-standings-preview
-          path: output/standings/*.png
-          if-no-files-found: error
-          retention-days: 7
