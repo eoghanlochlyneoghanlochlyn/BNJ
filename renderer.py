@@ -854,6 +854,25 @@ def render_fixtures(matches: list[dict], day: dt.date, output: Path) -> None:
     if current:
         pages.append(current)
 
+    # Enforce the same per-column invariant for fixtures and results.
+    for page_number, page in enumerate(pages, start=1):
+        counts = [0, 0] if use_two_columns else [0]
+        for entry in page:
+            items = entry[1]
+            column = entry[2] if use_two_columns else 0
+            counts[column] += len(items)
+        if any(count > MAX_MATCHES_PER_COLUMN for count in counts):
+            raise AssertionError(
+                f"Page {page_number} exceeds {MAX_MATCHES_PER_COLUMN} matches per column: {counts}"
+            )
+        print(f"[LAYOUT] page={page_number} column_match_counts={counts}")
+
+    # A prior run may have generated more pages than this run. Remove only
+    # stale pages belonging to the same output stem before writing new ones.
+    for stale in output.parent.glob(f"{output.stem}-[0-9]*{output.suffix or '.png'}"):
+        if stale.stem[len(output.stem) + 1:].isdigit():
+            stale.unlink()
+
     page_total = len(pages)
     if page_total == 1:
         if use_two_columns:
