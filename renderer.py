@@ -69,7 +69,8 @@ COMPETITION_FA = {
     "European Championship": "جام ملت‌های اروپا", "World Cup": "جام جهانی",
     "World Cup Qualifiers": "انتخابی جام جهانی", "Nations League": "لیگ ملت‌های اروپا",
     "Copa America": "کوپا آمریکا", "Copa Libertadores": "کوپا لیبرتادورس",
-    "Friendlies": "بازی دوستانه", "Friendly": "بازی دوستانه",\n    "Italian Super Cup": "سوپرکاپ ایتالیا", "Supercoppa Italiana": "سوپرکاپ ایتالیا",
+    "Friendlies": "بازی دوستانه", "Friendly": "بازی دوستانه",
+    "Italian Super Cup": "سوپرکاپ ایتالیا", "Supercoppa Italiana": "سوپرکاپ ایتالیا",
     "AFC Champions League Elite": "لیگ نخبگان آسیا", "AFC Champions League Two": "لیگ قهرمانان آسیا ۲",
 }
 
