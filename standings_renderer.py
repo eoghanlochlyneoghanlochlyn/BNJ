@@ -597,7 +597,8 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     # A bracket is read from the earliest round toward the final.  Each round
     # gets its own column and matchup boxes are vertically centred between the
     # boxes of the next round, with connector lines showing progression.
-    rounds = sorted(rounds, key=lambda item: -(int(item.get("participantCount") or 0)))
+    # Keep FotMob's round order. Sorting by participantCount is unsafe because
+    # playoff and round-of-16 stages can share the same participant count.
     cols = len(rounds)
     gap = 34
     side = 54
@@ -606,7 +607,7 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     header_h = HEADER_H
     body_top = header_h + 28
     body_bottom = body_top + max(760, (2 ** max(0, cols - 1)) * card_h)
-    height = max(900, body_bottom + 90)
+    height = max(1600, body_bottom + 90)
 
     image = Image.new("RGBA", (WIDTH, height), BG + (255,))
     draw = ImageDraw.Draw(image)
@@ -623,7 +624,8 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
         _draw_text(draw, (x + card_w / 2, body_top - 8), stage_name, _font(_knockout_stage_font_size(stage_name), True), TEXT, "ms")
         spacing = (body_bottom - body_top - count * card_h) / max(1, count - 1) if count > 1 else 0
         col_positions = []
-        for mi, matchup in enumerate(round_data["matchups"]):
+        ordered_matchups = sorted(round_data["matchups"], key=lambda m: int(m.get("number") or 0))
+        for mi, matchup in enumerate(ordered_matchups):
             y = body_top + mi * (card_h + spacing)
             _draw_knockout_match(draw, image, x, y, card_w, card_h, matchup)
             col_positions.append((x, y, card_w, card_h))
