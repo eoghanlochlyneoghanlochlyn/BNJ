@@ -583,57 +583,238 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
         _draw_text(draw, (x + w / 2, y + h - 11), f"پنالتی {penalty}", _font(18, True), MUTED, "ms")
 
 
+def _knockout_stage_key(stage: dict) -> int:
+    """Return the canonical tournament order for a knockout round."""
+    label = str(stage.get("stage") or "").strip()
+    keys = {
+        "پلی‌آف": 10,
+        "یک‌شصت‌وچهارم نهایی": 20,
+        "یک‌شانزدهم نهایی": 30,
+        "یک‌هشتم نهایی": 40,
+        "یک‌چهارم نهایی": 50,
+        "نیمه‌نهایی": 60,
+        "فینال": 70,
+        "رده‌بندی": 80,
+    }
+    if label in keys:
+        return keys[label]
+
+    count = int(stage.get("participantCount") or 0)
+    if count >= 64:
+        return 20
+    if count == 32:
+        return 30
+    if count == 16:
+        return 40
+    if count == 8:
+        return 50
+    if count == 4:
+        return 60
+    if count == 2:
+        return 70
+    return 0
+
+
+def _knockout_next_stage(stage: dict) -> dict | None:
+    """Create the next bracket stage when FotMob has not published it yet."""
+    label = str(stage.get("stage") or "").strip()
+    next_labels = {
+        "پلی‌آف": "یک‌شانزدهم نهایی",
+        "یک‌شصت‌وچهارم نهایی": "یک‌شانزدهم نهایی",
+        "یک‌شانزدهم نهایی": "یک‌هشتم نهایی",
+        "یک‌هشتم نهایی": "یک‌چهارم نهایی",
+        "یک‌چهارم نهایی": "نیمه‌نهایی",
+        "نیمه‌نهایی": "فینال",
+    }
+    next_label = next_labels.get(label)
+    if not next_label:
+        count = int(stage.get("participantCount") or 0)
+        next_label = {
+            64: "یک‌شانزدهم نهایی",
+            32: "یک‌هشتم نهایی",
+            16: "یک‌چهارم نهایی",
+            8: "نیمه‌نهایی",
+            4: "فینال",
+        }.get(count)
+    if not next_label:
+        return None
+
+    current_matchups = stage.get("matchups") or []
+    next_count = max(1, (len(current_matchups) + 1) // 2)
+    return {
+        "stage": next_label,
+        "participantCount": max(2, next_count * 2),
+        "matchups": [
+            {
+                "number": i + 1,
+                "homeTeamId": "",
+                "awayTeamId": "",
+                "homeTeam": "",
+                "awayTeam": "",
+                "homeScore": None,
+                "awayScore": None,
+                "winner": "",
+                "bestOf": 1,
+                "tbdTeam1": True,
+                "tbdTeam2": True,
+                "matches": [],
+                "aggregatedResult": {},
+                "aggregatedWinner": None,
+                "aggregatedLoser": None,
+                "penaltyScore": None,
+                "raw": {},
+            }
+            for i in range(next_count)
+        ],
+        "raw": {},
+        "placeholder": True,
+    }
+
+
+def _ensure_full_knockout_bracket(rounds: list[dict]) -> list[dict]:
+    """Keep all available past rounds and extend the tree through the final."""
+    if not rounds:
+        return []
+
+    # Remove duplicate stages while preserving the first real FotMob version.
+    unique: list[dict] = []
+    seen_keys: set[tuple] = set()
+    for item in rounds:
+        key = (
+            str(item.get("stage") or ""),
+            tuple(
+                (
+                    str(m.get("homeTeamId") or ""),
+                    str(m.get("awayTeamId") or ""),
+                    int(m.get("number") or 0),
+                )
+                for m in item.get("matchups") or []
+            ),
+        )
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        unique.append(item)
+
+    unique.sort(key=lambda item: (_knockout_stage_key(item), len(unique)))
+    # The final must be the right-most column. Add only genuinely missing
+    # future rounds; never replace or discard rounds already returned by FotMob.
+    for _ in range(8):
+        last = unique[-1]
+        if str(last.get("stage") or "") == "فینال":
+            break
+        nxt = _knockout_next_stage(last)
+        if not nxt:
+            break
+        if any(str(item.get("stage") or "") == nxt["stage"] for item in unique):
+            break
+        unique.append(nxt)
+
+    return unique
+
+
 def render_knockout_standings(data: dict, day, output: Path, stage: dict | None = None) -> None:
-    """Render knockout data as a real bracket/tree, preserving FotMob home/away scores."""
-    rounds = [stage] if stage is not None else list(data.get("knockoutRounds") or [])
-    rounds = [item for item in rounds if isinstance(item, dict) and item.get("matchups")]
+    """Render a compact professional bracket that always reaches the final."""
+    source_rounds = list(data.get("knockoutRounds") or [])
+    if stage is not None and not source_rounds:
+        source_rounds = [stage]
+    elif stage is not None:
+        # A stage argument identifies the current stage, but the poster should
+        # still contain every published earlier stage plus all future columns.
+        source_rounds = source_rounds[:]
+    rounds = _ensure_full_knockout_bracket(
+        [item for item in source_rounds if isinstance(item, dict) and item.get("matchups")]
+    )
     if not rounds:
         raise ValueError("Cannot render knockout standings without matchups.")
 
     competition_id = str(data.get("competitionId") or "")
-    competition = _competition_display_name(competition_id, str(data.get("competitionName") or ""))
+    competition = _competition_display_name(
+        competition_id, str(data.get("competitionName") or "")
+    )
     season = str(data.get("season") or "فصل جاری")
 
-    # A bracket is read from the earliest round toward the final.  Each round
-    # gets its own column and matchup boxes are vertically centred between the
-    # boxes of the next round, with connector lines showing progression.
-    # Keep FotMob's round order. Sorting by participantCount is unsafe because
-    # playoff and round-of-16 stages can share the same participant count.
+    # The first round is the most spread-out column. Every following round is
+    # positioned at the midpoint of the two preceding matches, producing the
+    # familiar shrinking tournament-tree geometry.
     cols = len(rounds)
-    gap = 34
-    side = 54
-    card_w = max(250, min(300, (WIDTH - 2 * side - gap * (cols - 1)) // cols))
-    card_h = 116
-    header_h = HEADER_H
-    body_top = header_h + 28
-    body_bottom = body_top + max(760, (2 ** max(0, cols - 1)) * card_h)
-    height = max(1600, body_bottom + 90)
+    side = 42
+    gap = 22
+    card_h = 112
+    usable_width = WIDTH - 2 * side - gap * (cols - 1)
+    card_w = max(245, min(330, usable_width // cols))
+
+    first_count = max(1, len(rounds[0].get("matchups") or []))
+    center_step = card_h + 28
+    body_top = HEADER_H + 56
+    first_centers = [
+        body_top + card_h / 2 + i * center_step
+        for i in range(first_count)
+    ]
+    all_centers: list[list[float]] = [first_centers]
+
+    # Each next-round match is vertically centered between the two matches
+    # feeding it. This halves the vertical density at every step.
+    for ri in range(1, cols):
+        previous = all_centers[-1]
+        current_count = len(rounds[ri].get("matchups") or [])
+        centers: list[float] = []
+        for i in range(current_count):
+            a = previous[min(i * 2, len(previous) - 1)]
+            b = previous[min(i * 2 + 1, len(previous) - 1)]
+            centers.append((a + b) / 2)
+        all_centers.append(centers)
+
+    last_center = max(max(c) for c in all_centers if c)
+    height = max(900, int(last_center + card_h / 2 + 70))
 
     image = Image.new("RGBA", (WIDTH, height), BG + (255,))
     draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((MARGIN_X, 34, WIDTH - MARGIN_X, 42), radius=4, fill=ACCENT)
-    draw.line((MARGIN_X, HEADER_H - 22, WIDTH - MARGIN_X, HEADER_H - 22), fill=BORDER, width=2)
-    _draw_standings_title(draw, WIDTH - MARGIN_X, 108, f"نمودار حذفی {competition}")
-    _draw_text(draw, (MARGIN_X, 108), season.replace("2026/2027", "2026/27"), _latin_font(27, True), MUTED, "lm", "ltr")
+    draw.rounded_rectangle(
+        (MARGIN_X, 34, WIDTH - MARGIN_X, 42), radius=4, fill=ACCENT
+    )
+    draw.line(
+        (MARGIN_X, HEADER_H - 22, WIDTH - MARGIN_X, HEADER_H - 22),
+        fill=BORDER, width=2
+    )
+    _draw_standings_title(
+        draw, WIDTH - MARGIN_X, 108, f"نمودار حذفی {competition}"
+    )
+    _draw_text(
+        draw, (MARGIN_X, 108),
+        season.replace("2026/2027", "2026/27"),
+        _latin_font(27, True), MUTED, "lm", "ltr"
+    )
 
-    positions = []
+    positions: list[list[tuple[float, float, float, float]]] = []
     for ri, round_data in enumerate(rounds):
         x = side + ri * (card_w + gap)
-        count = len(round_data["matchups"])
         stage_name = str(round_data.get("stage") or "مرحله حذفی")
-        _draw_text(draw, (x + card_w / 2, body_top - 8), stage_name, _font(_knockout_stage_font_size(stage_name), True), TEXT, "ms")
-        spacing = (body_bottom - body_top - count * card_h) / max(1, count - 1) if count > 1 else 0
-        col_positions = []
-        ordered_matchups = sorted(round_data["matchups"], key=lambda m: int(m.get("number") or 0))
+        _draw_text(
+            draw,
+            (x + card_w / 2, body_top - 16),
+            stage_name,
+            _font(_knockout_stage_font_size(stage_name), True),
+            TEXT,
+            "ms",
+        )
+
+        ordered_matchups = sorted(
+            round_data["matchups"],
+            key=lambda m: int(m.get("number") or 0),
+        )
+        col_positions: list[tuple[float, float, float, float]] = []
         for mi, matchup in enumerate(ordered_matchups):
-            y = body_top + mi * (card_h + spacing)
-            _draw_knockout_match(draw, image, x, y, card_w, card_h, matchup)
+            center = all_centers[ri][mi]
+            y = center - card_h / 2
+            _draw_knockout_match(
+                draw, image, x, y, card_w, card_h, matchup
+            )
             col_positions.append((x, y, card_w, card_h))
         positions.append(col_positions)
 
-    # Connect each pair of matches to the next-round matchup. The draw order
-    # is the stable bracket key supplied by FotMob, so scores never determine
-    # visual ordering and therefore can never swap teams.
+    # Connect each source pair to the exact next-round card. The coordinates
+    # are derived only from bracket order, never from score or winner fields.
     for ri in range(len(positions) - 1):
         current = positions[ri]
         nxt = positions[ri + 1]
@@ -655,9 +836,6 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
 
     output.parent.mkdir(parents=True, exist_ok=True)
     image.convert("RGB").save(output, "PNG", optimize=True)
-
-
-
 
 
 def render_standings(data: dict, day, output: Path, title_suffix: str | None = None) -> None:
