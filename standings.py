@@ -223,12 +223,36 @@ def group_stage_complete(table: dict) -> bool:
     return True
 
 
-def all_groups_complete(data: dict) -> bool:
-    """True only after every returned group has completed its group-stage schedule."""
-    tables = data.get("tables") or []
-    return bool(tables) and is_grouped_standings(data) and all(
-        group_stage_complete(table) for table in tables
+def _is_group_table(table: dict) -> bool:
+    """Return True for an actual named group, excluding auxiliary tables.
+
+    FotMob can return extra standings such as "Best 3rd placed teams" alongside
+    the real groups. Those tables are displayed, but they are not groups and
+    must not prevent the group stage from being considered complete.
+    """
+    group = _clean(table.get("group"))
+    if not group:
+        return False
+    return bool(
+        re.fullmatch(
+            r"(?:Grp\\.?|Group)\\s+[A-Za-z0-9]+",
+            group,
+            flags=re.IGNORECASE,
+        )
     )
+
+
+def all_groups_complete(data: dict) -> bool:
+    """True when every actual named group has completed its schedule."""
+    tables = data.get("tables") or []
+    if not tables or not is_grouped_standings(data):
+        return False
+
+    group_tables = [table for table in tables if _is_group_table(table)]
+    if not group_tables:
+        return False
+
+    return all(group_stage_complete(table) for table in group_tables)
 
 def fetch_standings(competition_id: str, season: str | None = None) -> dict:
     params = {"id": str(competition_id)}
