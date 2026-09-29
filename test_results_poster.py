@@ -5,7 +5,7 @@ import requests
 
 from fotmob import FOTMOB_BASE_URL, HEADERS, _parse_utc, _normalize_match
 from results import score_for
-from renderer import render_fixtures
+from renderer import render_fixtures, _result_label_for_rtl
 from telegram import send_photo, send_photos
 
 MATCH_IDS = ["4653849", "5795461", "4934510", "4685769", "4935324", "5034193"]
@@ -40,7 +40,21 @@ def load_match(match_id):
     return score_for(match)
 
 
+def assert_score_ordering():
+    cases = [
+        ("۳ - ۱", "۱ - ۳"),
+        ("1 - 0", "0 - 1"),
+        ("۱ (۳-۲) ۱", "۱ (۲-۳) ۱"),
+        ("1 (4-3) 1", "1 (3-4) 1"),
+    ]
+    for raw, expected in cases:
+        actual = _result_label_for_rtl({"resultLabel": raw})
+        if actual != expected:
+            raise AssertionError(f"Score reversal failed: {raw!r} -> {actual!r}, expected {expected!r}")
+
+
 def main():
+    assert_score_ordering()
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--send-telegram", action="store_true")
