@@ -250,7 +250,7 @@ def score_for(match):
     # isPenaltyShootoutEvent=True; count only successful shootout goals.
     penalty_score = _shootout_score(details)
     if penalty_score is not None:
-        label += f" ({penalty_score['home']} - {penalty_score['away']})"
+        label = f"{h} ({penalty_score['home']}-{penalty_score['away']}) {a}"
 
     match["resultLabel"] = label.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
     stage = _extract_match_stage(details)
