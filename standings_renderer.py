@@ -149,7 +149,7 @@ def _draw_table(draw, image, x1, y, x2, table):
 
     positions = {}
     cursor = x2
-    for key in ("rank", "team", "played", "wins", "draws", "losses", "gf", "ga", "gd", "points"):
+    for key in ("points", "gd", "ga", "gf", "losses", "draws", "wins", "played", "team", "rank"):
         cursor -= widths[key]
         positions[key] = (cursor, cursor + widths[key])
 
@@ -261,20 +261,21 @@ def render_standings(data: dict, day, output: Path) -> None:
     draw.rounded_rectangle((MARGIN_X, 34, WIDTH - MARGIN_X, 42), radius=4, fill=ACCENT)
     draw.line((MARGIN_X, HEADER_H - 22, WIDTH - MARGIN_X, HEADER_H - 22), fill=BORDER, width=2)
 
-    league_logo = _league_logo(competition_id)
+    # Title is on the right. The league logo sits to its LEFT, while the
+    # season remains directly underneath the title.
     title_y = 78
     title_right = WIDTH - MARGIN_X
+    logo_right = title_right - 470
+    league_logo = _league_logo(competition_id)
     if league_logo:
-        logo_x = title_right - 34
         image.alpha_composite(
             league_logo,
-            (int(logo_x - league_logo.width), int(title_y - league_logo.height / 2)),
+            (int(logo_right - league_logo.width), int(title_y - league_logo.height / 2)),
         )
-        title_right = logo_x - 20
 
     _draw_text(draw, (title_right, title_y), f"جدول {competition}", _font(52, True), TEXT, "ra")
 
-    # Render the season with a Latin-capable font so the slash is not lost.
+    # Use a Latin font for 2026/27 so the slash is always rendered.
     season_text = season.replace("2026/2027", "2026/27") if season else ""
     if season_text:
         _draw_text(draw, (title_right, 142), season_text, _latin_font(27), MUTED, "ra", "ltr")
