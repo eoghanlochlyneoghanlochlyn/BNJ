@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       competition_id:
-        description: "FotMob competition ID"
+        description: "FotMob competition IDs (comma-separated)"
         required: false
-        default: "47"
+        default: "87,55,54,53"
         type: string
       season:
         description: "Optional FotMob season, e.g. 2026/2027"
@@ -36,32 +36,42 @@ jobs:
           TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
           TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
         run: |
-          ARGS=(--competition-id "${{ inputs.competition_id }}")
-          if [ -n "${{ inputs.season }}" ]; then ARGS+=(--season "${{ inputs.season }}"); fi
-          python - <<'PY'
+          IFS=',' read -ra IDS <<< "${{ inputs.competition_id }}"
+          rm -rf output/standings
+          mkdir -p output/standings
+          for ID in "${IDS[@]}"; do
+            ID="${ID//[[:space:]]/}"
+            python "$ID" "${{ inputs.season }}" <<'PY'
           import datetime as dt
+          import sys
           from pathlib import Path
           from standings import fetch_standings
           from standings_renderer import render_standings
-          data = fetch_standings("${{ inputs.competition_id }}", "${{ inputs.season }}" or None)
-          render_standings(data, dt.datetime.now(dt.timezone.utc).date(), Path("output/standings.png"))
+          competition_id = sys.argv[1]
+          season = sys.argv[2] or None
+          data = fetch_standings(competition_id, season)
+          render_standings(data, dt.datetime.now(dt.timezone.utc).date(), Path("output/standings") / f"{competition_id}.png")
           PY
+          done
 
       - name: Run standings unit tests
         run: python -m unittest test_standings_poster.py -v
 
       - name: Validate generated image
         run: |
-          test -s output/standings.png
-          python - <<'PY'
+          for image_path in output/standings/*.png; do
+            test -s "$image_path"
+            python - "$image_path" <<'PY'
           from PIL import Image
-          image = Image.open("output/standings.png").convert("RGB")
+          import sys
+          image = Image.open(sys.argv[1]).convert("RGB")
           if image.size[0] != 1600:
               raise SystemExit(f"Unexpected width: {image.size}")
           if len(set(image.getdata())) <= 1:
               raise SystemExit("Generated standings image is blank.")
           print("Valid standings image:", image.size)
           PY
+          done
 
       - name: Send to Telegram
         env:
@@ -69,19 +79,15 @@ jobs:
           TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
         run: |
           python - <<'PY'
-          import datetime as dt
           from pathlib import Path
-          from standings import fetch_standings
-          from standings_renderer import render_standings
           from telegram import send_photo
-          data = fetch_standings("${{ inputs.competition_id }}", "${{ inputs.season }}" or None)
-          render_standings(data, dt.datetime.now(dt.timezone.utc).date(), Path("output/standings.png"))
-          send_photo(Path("output/standings.png"), "📊 جدول رقابت")
+          for path in sorted(Path("output/standings").glob("*.png")):
+              send_photo(path, "📊 جدول رقابت")
           PY
 
       - uses: actions/upload-artifact@v4
         with:
           name: bnj-standings-preview
-          path: output/standings.png
+          path: output/standings/*.png
           if-no-files-found: error
           retention-days: 7
