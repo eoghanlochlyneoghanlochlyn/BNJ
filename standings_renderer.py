@@ -525,9 +525,64 @@ def _render_grouped_combined(data: dict, output: Path) -> None:
 
 
 def _knockout_team_name(name: str, team_id: str, tbd: bool) -> str:
-    if tbd or not str(name or "").strip():
+    """Return a renderable team name with safe fallbacks for FotMob variants."""
+    if tbd:
         return "تعیین نشده"
-    return _team_name({"id": team_id, "name": name})
+
+    text = _clean_knockout_team_value(name)
+    if text:
+        return _team_name({"id": team_id, "name": text})
+
+    return "تعیین نشده"
+
+
+def _clean_knockout_team_value(value: Any) -> str:
+    if isinstance(value, dict):
+        value = (
+            value.get("name")
+            or value.get("longName")
+            or value.get("shortName")
+            or value.get("teamName")
+        )
+    if value is None:
+        return ""
+    return " ".join(str(value).replace("\xa0", " ").split()).strip()
+
+
+def _knockout_match_team(matchup: dict, side: str) -> tuple[str, str]:
+    """Resolve a team from the normalized matchup and its raw FotMob data."""
+    is_home = side == "home"
+    name_key = "homeTeam" if is_home else "awayTeam"
+    id_key = "homeTeamId" if is_home else "awayTeamId"
+    name = _clean_knockout_team_value(matchup.get(name_key))
+    team_id = str(matchup.get(id_key) or "")
+
+    raw = matchup.get("raw")
+    if isinstance(raw, dict):
+        nested = raw.get("home" if is_home else "away")
+        if isinstance(nested, dict):
+            team_id = team_id or str(nested.get("id") or nested.get("teamId") or "")
+            name = name or _clean_knockout_team_value(nested)
+
+        for key in (
+            "homeTeamName" if is_home else "awayTeamName",
+            "homeName" if is_home else "awayName",
+        ):
+            name = name or _clean_knockout_team_value(raw.get(key))
+
+    if not name:
+        for match in matchup.get("matches") or []:
+            if not isinstance(match, dict):
+                continue
+            nested = match.get("home" if is_home else "away")
+            if isinstance(nested, dict):
+                team_id = team_id or str(nested.get("id") or nested.get("teamId") or "")
+                name = name or _clean_knockout_team_value(nested)
+            name = name or _clean_knockout_team_value(
+                match.get("homeTeamName" if is_home else "awayTeamName")
+            )
+
+    return name, team_id
 
 
 def _knockout_stage_font_size(stage: str) -> int:
@@ -573,13 +628,13 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
         (x, y, x + w, y + h), radius=16, fill=CARD, outline=BORDER, width=2
     )
 
-    home_id = str(matchup.get("homeTeamId") or "")
-    away_id = str(matchup.get("awayTeamId") or "")
+    home_name_raw, home_id = _knockout_match_team(matchup, "home")
+    away_name_raw, away_id = _knockout_match_team(matchup, "away")
     home_name = _knockout_team_name(
-        matchup.get("homeTeam", ""), home_id, matchup.get("tbdTeam1", False)
+        home_name_raw, home_id, matchup.get("tbdTeam1", False)
     )
     away_name = _knockout_team_name(
-        matchup.get("awayTeam", ""), away_id, matchup.get("tbdTeam2", False)
+        away_name_raw, away_id, matchup.get("tbdTeam2", False)
     )
     home_logo = _team_logo(home_id)
     away_logo = _team_logo(away_id)
@@ -602,17 +657,51 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
         text_left = score_x + 30
         font = _fit_knockout_name(draw, name, text_right, text_left)
         _draw_text(draw, (text_right, yy), name, font, TEXT, "rm")
-        score_text = _persian_digits(score_value) if score_value is not None else "—"
-        if penalty_value is not None:
-            score_text = f"{score_text} ({penalty_value})"
+        # Do not draw the parentheses with the Persian font: on some
+        # Linux font builds they become tofu squares. Draw the numeric score
+        # with the Persian font and the punctuation with a Latin font that
+        # contains both ASCII parentheses.
+        main_score = _persian_digits(score_value) if score_value is not None else "—"
+        main_font = _font(25, True)
         _draw_text(
             draw, (score_x, yy),
-            score_text,
-            _font(25, True),
+            main_score,
+            main_font,
             TEXT,
             "lm",
             "ltr",
         )
+
+        if penalty_value is not None:
+            main_bbox = draw.textbbox(
+                (score_x, yy), main_score,
+                font=main_font, anchor="lm",
+                direction="ltr", language="fa",
+            )
+            cursor_x = main_bbox[2] + 6
+            punct_font = _latin_font(25, True)
+            penalty_font = _font(25, True)
+
+            _draw_text(draw, (cursor_x, yy), "(", punct_font, TEXT, "lm", "ltr")
+            paren_width = draw.textlength("(", font=punct_font)
+            cursor_x += paren_width
+
+            penalty_text = _persian_digits(penalty_value)
+            _draw_text(
+                draw, (cursor_x, yy),
+                penalty_text,
+                penalty_font,
+                TEXT,
+                "lm",
+                "ltr",
+            )
+            penalty_bbox = draw.textbbox(
+                (cursor_x, yy), penalty_text,
+                font=penalty_font, anchor="lm",
+                direction="ltr", language="fa",
+            )
+            cursor_x = penalty_bbox[2] + 4
+            _draw_text(draw, (cursor_x, yy), ")", punct_font, TEXT, "lm", "ltr")
 
     team_row(home_y, home_name, home_logo, matchup.get("homeScore"), home_penalty)
     team_row(away_y, away_name, away_logo, matchup.get("awayScore"), away_penalty)
