@@ -266,52 +266,61 @@ def _draw_table(draw, image, x1, y, x2, table):
 
 
 def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
-    """Render the mixed Persian/Latin standings title and return its width."""
-    level_match = re.fullmatch(r"(جدول لیگ ملت‌های اروپا) ([ABCD])", title_text)
-    group_match = re.fullmatch(r"(جدول .+?)(?: \| )?(گروه) ([A-Za-z0-9]+)$", title_text)
+    """Render a mixed Persian/Latin title using script-appropriate fonts.
 
-    def draw_centered(text, x_right, font, direction, language=None):
-        kwargs = {"anchor": "ra", "direction": direction}
+    Never pass a mixed-script string to a single Persian font. That is the
+    source of the hollow-square glyphs seen when FotMob/competition labels
+    contain Latin level letters such as A/B/C/D.
+    """
+    text = str(title_text or "").replace("|", " ")
+    tokens = re.findall(
+        r"[A-Za-z0-9]+(?:[./:-][A-Za-z0-9]+)*|"
+        r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+|"
+        r"[^\\w\\s]",
+        text,
+    )
+
+    # Draw from the visual right edge toward the left. Each token gets a font
+    # that definitely contains the glyphs it needs.
+    x_right = float(right_x)
+    widths: list[float] = []
+    gap = 10
+
+    for token in reversed(tokens):
+        if re.fullmatch(r"[A-Za-z0-9]+(?:[./:-][A-Za-z0-9]+)*", token):
+            font = _latin_font(42 if len(token) <= 2 else 46, True)
+            direction = "ltr"
+            language = None
+        elif re.fullmatch(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+", token):
+            font = _font(52, True)
+            direction = "rtl"
+            language = "fa"
+        else:
+            font = _latin_font(42, True)
+            direction = "ltr"
+            language = None
+
+        kwargs = {
+            "anchor": "ra",
+            "direction": direction,
+        }
         if language:
             kwargs["language"] = language
-        bbox = draw.textbbox((x_right, y), text, font=font, **kwargs)
-        center = (bbox[1] + bbox[3]) / 2
-        adjusted_y = y + (y - center)
-        draw.text((x_right, adjusted_y), text, font=font, fill=TEXT, **kwargs)
-        return bbox
 
-    if level_match:
-        base_text, level = level_match.groups()
-        base_font = _font(52, True)
-        level_font = _latin_font(42, True)
-        base_bbox = draw_centered(base_text, right_x, base_font, "rtl", "fa")
-        base_width = base_bbox[2] - base_bbox[0]
-        gap = 18
-        level_right = right_x - base_width - gap
-        level_bbox = draw_centered(level, level_right, level_font, "ltr")
-        return base_width + gap + (level_bbox[2] - level_bbox[0])
+        bbox = draw.textbbox((x_right, y), token, font=font, **kwargs)
+        ink_center = (bbox[1] + bbox[3]) / 2
+        draw_y = y + (y - ink_center)
+        draw.text((x_right, draw_y), token, font=font, fill=TEXT, **kwargs)
 
-    if not group_match:
-        font = _font(52, True)
-        bbox = draw_centered(title_text, right_x, font, "rtl", "fa")
-        return bbox[2] - bbox[0]
+        width = bbox[2] - bbox[0]
+        widths.append(width)
+        x_right -= width + gap
 
-    base_text, group_word, group_label = group_match.groups()
-    base_font = _font(52, True)
-    group_word_font = _font(48, True)
-    group_label_font = _latin_font(42, True) if group_label.isalpha() else _font(42, True)
-    gap = 14
+    if not widths:
+        return 0
 
-    base_bbox = draw_centered(base_text, right_x, base_font, "rtl", "fa")
-    base_width = base_bbox[2] - base_bbox[0]
-    group_label_right = right_x - base_width - gap
+    return right_x - x_right - gap
 
-    label_bbox = draw_centered(group_label, group_label_right, group_label_font, "ltr")
-    label_width = label_bbox[2] - label_bbox[0]
-    group_word_right = group_label_right - label_width - gap
-    group_word_bbox = draw_centered(group_word, group_word_right, group_word_font, "rtl", "fa")
-    group_word_width = group_word_bbox[2] - group_word_bbox[0]
-    return base_width + gap + label_width + gap + group_word_width
 
 def render_standings(data: dict, day, output: Path, title_suffix: str | None = None) -> None:
     if not features.check("raqm"):
@@ -343,7 +352,7 @@ def render_standings(data: dict, day, output: Path, title_suffix: str | None = N
     title_right = WIDTH - MARGIN_X
     title_text = f"جدول {competition}"
     if title_suffix:
-        title_text = f"{title_text} | {_group_display_name(title_suffix)}"
+        title_text = f"{title_text} {_group_display_name(title_suffix)}"
     title_width = _draw_standings_title(draw, title_right, title_y, title_text)
 
     season_text = season.replace("2026/2027", "2026/27") if season else ""
