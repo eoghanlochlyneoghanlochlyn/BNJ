@@ -122,7 +122,27 @@ def _group_display_name(value: Any) -> str:
     if not text:
         return ""
 
-    match = re.fullmatch(r"(?:Group|Grp)\s*([A-Za-z0-9]+)", text, re.IGNORECASE)
+    # FotMob may return variants such as "Group E", "Grp E",
+    # "Grp. E", or "Grp . E". Normalize all of them to Persian so the
+    # renderer never has to display the English group abbreviation.
+    match = re.fullmatch(
+        r"(?:Group|Grp)\s*\.?\s*([A-Za-z0-9]+)",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        label = match.group(1)
+        if label.isdigit():
+            label = _persian_digits(label)
+        return f"گروه {label}"
+
+    # Also handle a few API variants where the group label is separated
+    # from the word by punctuation.
+    match = re.fullmatch(
+        r"(?:Group|Grp)\s*\.\s*([A-Za-z0-9]+)",
+        text,
+        re.IGNORECASE,
+    )
     if match:
         label = match.group(1)
         if label.isdigit():
