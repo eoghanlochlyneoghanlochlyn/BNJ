@@ -530,15 +530,9 @@ def render_standings(data: dict, day, output: Path, title_suffix: str | None = N
     if not tables:
         raise ValueError("Cannot render standings without tables.")
 
-    # Completed grouped competitions use a compact grid so all groups and
-    # the complete auxiliary third-place ranking remain visible.
-    if title_suffix is None and any(
-        _group_display_name(t.get("group")).startswith("گروه ")
-        for t in tables
-    ):
-        _render_grouped_combined(data, output)
-        return
-
+    # Grouped competitions are rendered vertically, one complete table
+    # after another. This preserves the original poster structure and
+    # guarantees that every group and every auxiliary table remains visible.
     competition_id = str(data.get("competitionId") or "")
     english_name = str(data.get("competitionName") or "")
     competition = _competition_display_name(competition_id, english_name)
