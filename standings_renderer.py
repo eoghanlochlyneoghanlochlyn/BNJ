@@ -170,9 +170,9 @@ def _draw_table(draw, image, x1, y, x2, table):
     for key, (left, right) in positions.items():
         center = (left + right) / 2
         if key == "team":
-            _draw_text(draw, (right - 18, y + HEADER_ROW_H / 2), labels[key], _font(27, True), TEXT, "rm")
-        else:
-            _draw_text(draw, (center, y + HEADER_ROW_H / 2), labels[key], _font(24, True), TEXT)
+            _draw_text(draw, (right - 18, y + HEADER_ROW_H / 2), labels[key], _font(31, True), TEXT, "rm")
+        elif key != "rank":
+            _draw_text(draw, (center, y + HEADER_ROW_H / 2), labels[key], _font(30, True), TEXT)
 
     row_y = y + HEADER_ROW_H
     for index, row in enumerate(rows):
@@ -198,7 +198,7 @@ def _draw_table(draw, image, x1, y, x2, table):
                     draw,
                     (logo_x - 14, row_y + ROW_H / 2),
                     team_name,
-                    _font(28, True),
+                    _font(32, True),
                     TEXT,
                     "rm",
                 )
@@ -226,8 +226,18 @@ def _draw_table(draw, image, x1, y, x2, table):
             if value is None:
                 value = "—"
             text = _persian_digits(value)
-            font = _font(27, key in ("points", "rank"))
-            _draw_text(draw, (center, row_y + ROW_H / 2), text, font, TEXT, "mm")
+            font = _font(32, True)
+            # Numeric cells are explicitly LTR so a negative goal difference
+            # renders as -۳ rather than ۳- in the visual order.
+            _draw_text(
+                draw,
+                (center, row_y + ROW_H / 2),
+                text,
+                font,
+                TEXT,
+                "mm",
+                "ltr",
+            )
 
         draw.line((x1, row_y + ROW_H - 1, x2, row_y + ROW_H - 1), fill=BORDER, width=1)
         row_y += ROW_H
