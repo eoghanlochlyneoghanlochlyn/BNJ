@@ -266,6 +266,31 @@ def _draw_table(draw, image, x1, y, x2, table):
 
 def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
     """Draw standings titles with Latin group/level letters using a Latin font."""
+    level_match = re.fullmatch(r"(جدول لیگ ملت‌های اروپا) ([ABCD])", title_text)
+    if level_match:
+        base_text, level = level_match.groups()
+        base_font = _font(52, True)
+        level_font = _latin_font(42, True)
+        base_bbox = draw.textbbox(
+            (0, 0), base_text, font=base_font, anchor="ra",
+            direction="rtl", language="fa"
+        )
+        base_width = base_bbox[2] - base_bbox[0]
+        level_right = right_x - base_width - 18
+
+        def draw_centered(text, x_right, font, direction, language=None):
+            kwargs = {"anchor": "ra", "direction": direction}
+            if language:
+                kwargs["language"] = language
+            bbox = draw.textbbox((x_right, y), text, font=font, **kwargs)
+            center = (bbox[1] + bbox[3]) / 2
+            adjusted_y = y + (y - center)
+            draw.text((x_right, adjusted_y), text, font=font, fill=TEXT, **kwargs)
+
+        draw_centered(base_text, right_x, base_font, "rtl", "fa")
+        draw_centered(level, level_right, level_font, "ltr")
+        return
+
     match = re.fullmatch(r"(جدول .+?)(?: \| )?(گروه) ([A-Za-z0-9]+)$", title_text)
     if not match:
         _draw_text(draw, (right_x, y), title_text, _font(52, True), TEXT, "rm")
