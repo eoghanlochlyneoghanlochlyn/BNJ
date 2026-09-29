@@ -61,6 +61,7 @@ def load_match(match_id):
     if not match:
         raise RuntimeError(f"Match {match_id}: could not normalize match details")
     match["competitionName"] = league_name
+    print(f"[COMPETITION] match={match_id} general.leagueId={general.get('leagueId')!r} header.league={league!r} resolved_id={match.get('leagueId')!r} name={league_name!r} persian={_competition_name(match)!r}")
     return score_for(match)
 
 
@@ -84,6 +85,7 @@ def main():
     assert _competition_name({"leagueId": "207", "competitionName": "Trophée des champions"}) == "سوپرجام فرانسه"
     assert _competition_name({"leagueId": "53", "competitionName": "Trophée des Champions"}) == "سوپرجام فرانسه"
     assert _competition_name({"leagueId": "53", "competitionName": "Ligue 1"}) == "لیگ ۱ فرانسه"
+    assert _competition_name({"leagueId": "53", "competitionName": "Trophée des Champions - Final Stage"}) == "سوپرجام فرانسه"
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--send-telegram", action="store_true")
