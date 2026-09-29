@@ -245,6 +245,55 @@ def _kickoff(match: dict) -> str:
         return "—"
 
 
+def _result_label_for_rtl(match: dict) -> str:
+    """
+    Return the result in the same visual order as the teams in the poster.
+
+    The poster is RTL, so the away team is on the left and the home team is
+    on the right. FotMob's numeric result is home-away. Therefore a result
+    such as "2 (4) 3" (home 2, away 3; home won 4-3 on penalties) must be
+    displayed visually as "3 2 (4)" so each number sits next to its team.
+
+    This function only changes the presentation order; it never changes the
+    underlying match data.
+    """
+    raw = str(match.get("resultLabel") or "").strip()
+    if not raw:
+        return _kickoff(match)
+
+    # Match two score numbers, allowing a shootout value in parentheses.
+    # Examples handled:
+    #   2 - 1
+    #   2:1
+    #   2 (4) 3
+    #   2 (4) - 3 (3)
+    pattern = re.compile(
+        r"(?P<home>\\d+)(?:\\s*\\((?P<home_pen>\\d+)\\))?"
+        r"(?P<sep>\\s*[-–—:]\\s*|\\s+)"
+        r"(?P<away>\\d+)(?:\\s*\\((?P<away_pen>\\d+)\\))?"
+    )
+    match_result = pattern.search(raw)
+    if not match_result:
+        return raw
+
+    home_score = match_result.group("home")
+    home_pen = match_result.group("home_pen")
+    away_score = match_result.group("away")
+    away_pen = match_result.group("away_pen")
+
+    left = away_score
+    if away_pen is not None:
+        left += f" ({away_pen})"
+
+    right = home_score
+    if home_pen is not None:
+        right += f" ({home_pen})"
+
+    # Keep the separator simple and deterministic for the graphic.
+    replacement = f"{left} - {right}"
+    return raw[:match_result.start()] + replacement + raw[match_result.end():]
+
+
 def _text_width(draw, text: str, font, direction: str = "rtl") -> float:
     return draw.textlength(text, font=font, direction=direction, language="fa" if direction == "rtl" else None)
 
@@ -358,7 +407,7 @@ def _draw_match_row(image, draw, box, match, accent=ACCENT, compact=False):
     x1, y1, x2, y2 = box
     home = _team_name(match.get("home"))
     away = _team_name(match.get("away"))
-    kickoff = match.get("resultLabel") or _kickoff(match)
+    kickoff = _result_label_for_rtl(match)
     stage = _match_stage(match)
 
     # FotMob's resultLabel is already in HOME-SCORE / AWAY-SCORE order.
