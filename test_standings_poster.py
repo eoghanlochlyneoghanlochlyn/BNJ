@@ -3,11 +3,62 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from standings import _extract_tables, _normalize_rows, all_groups_complete, group_stage_complete, is_grouped_standings
-from standings_renderer import _group_display_name, render_group_standings, render_standings
+from standings import _extract_knockout, _extract_tables, _knockout_stage_label, _normalize_rows, all_groups_complete, group_stage_complete, has_knockout, is_grouped_standings
+from standings_renderer import _group_display_name, render_group_standings, render_knockout_standings, render_standings
 
 
 class StandingsTests(unittest.TestCase):
+    def test_extract_knockout_rounds(self):
+        payload = {"playoff": {"rounds": [
+            {"participantCount": 16, "stage": "playoff", "matchups": [
+                {"drawOrder": 1, "homeTeamId": 9829, "awayTeamId": 9847,
+                 "homeTeam": "Monaco", "awayTeam": "Paris Saint-Germain",
+                 "homeScore": 4, "awayScore": 5, "bestOf": 2}
+            ]},
+            {"participantCount": 8, "stage": "quarterfinal", "matchups": [
+                {"drawOrder": 1, "homeTeamId": 9825, "awayTeamId": 8456,
+                 "homeTeam": "Arsenal", "awayTeam": "Manchester City",
+                 "bestOf": 2, "tbdTeam1": False, "tbdTeam2": True}
+            ]}
+        ]}}
+        rounds = _extract_knockout(payload)
+        self.assertEqual(len(rounds), 2)
+        self.assertEqual(rounds[0]["stage"], "پلی‌آف")
+        self.assertEqual(rounds[1]["stage"], "یک‌چهارم نهایی")
+        self.assertEqual(rounds[0]["matchups"][0]["homeScore"], 4)
+        self.assertEqual(rounds[0]["matchups"][0]["bestOf"], 2)
+        self.assertTrue(has_knockout({"knockoutRounds": rounds}))
+
+    def test_knockout_stage_label_from_participant_count(self):
+        self.assertEqual(_knockout_stage_label({"participantCount": 16}), "یک‌هشتم نهایی")
+        self.assertEqual(_knockout_stage_label({"participantCount": 8}), "یک‌چهارم نهایی")
+        self.assertEqual(_knockout_stage_label({"participantCount": 4}), "نیمه‌نهایی")
+        self.assertEqual(_knockout_stage_label({"participantCount": 2}), "فینال")
+
+    def test_render_knockout_poster(self):
+        rounds = _extract_knockout({"playoff": {"rounds": [
+            {"participantCount": 16, "stage": "round of 16", "matchups": [
+                {"drawOrder": 1, "homeTeamId": "9825", "awayTeamId": "8456",
+                 "homeTeam": "Arsenal", "awayTeam": "Manchester City",
+                 "homeScore": 3, "awayScore": 2, "bestOf": 1}
+            ]},
+            {"participantCount": 8, "stage": "quarterfinal", "matchups": [
+                {"drawOrder": 1, "homeTeamId": "9825", "awayTeamId": "8456",
+                 "homeTeam": "Arsenal", "awayTeam": "Manchester City",
+                 "homeScore": 5, "awayScore": 4, "bestOf": 2}
+            ]}
+        ]}})
+        data = {"competitionId": "42", "competitionName": "Champions League",
+                "season": "2025/2026", "knockoutRounds": rounds}
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "knockout.png"
+            render_knockout_standings(data, dt.date(2026, 9, 29), output)
+            self.assertTrue(output.exists())
+            from PIL import Image
+            with Image.open(output) as image:
+                self.assertEqual(image.size[0], 1600)
+                self.assertGreater(image.size[1], 500)
+
     def test_normalize_fotmob_table_rows(self):
         payload = {
             "table": {
