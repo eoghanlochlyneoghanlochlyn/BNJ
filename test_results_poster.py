@@ -83,6 +83,7 @@ def assert_score_ordering():
 def main():
     assert_score_ordering()
     assert _competition_name({"leagueId": "207", "competitionName": "Trophée des champions"}) == "سوپرجام فرانسه"
+    assert _competition_name({"leagueId": "935524", "competitionName": "Super Cup"}) == "سوپرجام فرانسه"
     assert _competition_name({"leagueId": "53", "competitionName": "Trophée des Champions"}) == "سوپرجام فرانسه"
     assert _competition_name({"leagueId": "53", "competitionName": "Ligue 1"}) == "لیگ ۱ فرانسه"
     assert _competition_name({"leagueId": "53", "competitionName": "Trophée des Champions - Final Stage"}) == "سوپرجام فرانسه"
@@ -97,6 +98,10 @@ def main():
     if len(matches) != len(MATCH_IDS):
         raise RuntimeError("Incomplete test match list")
 
+    french_cup = next((m for m in matches if m["id"] == "5740646"), None)
+    assert french_cup is not None, "French Super Cup test match missing"
+    assert french_cup["leagueId"] == "935524", f"Unexpected French Super Cup ID: {french_cup['leagueId']}"
+    assert _competition_name(french_cup) == "سوپرجام فرانسه", "Real French Super Cup translation failed"
     matches.sort(key=lambda m: m["startIran"])
     output = Path("output/results-test.png")
 
