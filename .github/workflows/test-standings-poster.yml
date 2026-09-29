@@ -86,9 +86,15 @@ jobs:
       - name: Run standings unit tests
         run: python -m unittest test_standings_poster.py -v
 
-      - name: Validate generated image
+      - name: Validate generated images
         run: |
-          for image_path in output/standings/*.png; do
+          mapfile -t IMAGE_PATHS < <(find output/standings -type f -name '*.png' -print | sort)
+          if [ "${#IMAGE_PATHS[@]}" -eq 0 ]; then
+            echo "No standings PNG files were generated."
+            exit 1
+          fi
+
+          for image_path in "${IMAGE_PATHS[@]}"; do
             test -s "$image_path"
             python - "$image_path" <<'PY'
           from PIL import Image
