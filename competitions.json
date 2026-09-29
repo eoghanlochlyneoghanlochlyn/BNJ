@@ -1,0 +1,192 @@
+[
+    {
+        "id": "47",
+        "name": "Premier League",
+        "persian": "لیگ برتر انگلیس"
+    },
+    {
+        "id": "132",
+        "name": "FA Cup",
+        "persian": "جام حذفی انگلیس"
+    },
+    {
+        "id": "133",
+        "name": "EFL Cup",
+        "persian": "جام اتحادیه انگلیس"
+    },
+    {
+        "id": "247",
+        "name": "Community Shield",
+        "persian": "سوپرجام انگلیس"
+    },
+    {
+        "id": "87",
+        "name": "LaLiga",
+        "persian": "لالیگا"
+    },
+    {
+        "id": "138",
+        "name": "Copa del Rey",
+        "persian": "جام حذفی اسپانیا"
+    },
+    {
+        "id": "139",
+        "name": "Supercopa de España",
+        "persian": "سوپرجام اسپانیا"
+    },
+    {
+        "id": "55",
+        "name": "Serie A",
+        "persian": "سری آ ایتالیا"
+    },
+    {
+        "id": "141",
+        "name": "Coppa Italia",
+        "persian": "جام حذفی ایتالیا"
+    },
+    {
+        "id": "11015",
+        "name": "Supercoppa Italiana",
+        "persian": "سوپرجام ایتالیا"
+    },
+    {
+        "id": "54",
+        "name": "Bundesliga",
+        "persian": "بوندسلیگا"
+    },
+    {
+        "id": "209",
+        "name": "DFB-Pokal",
+        "persian": "جام حذفی آلمان"
+    },
+    {
+        "id": "8924",
+        "name": "DFL-Supercup",
+        "persian": "سوپرجام آلمان"
+    },
+    {
+        "id": "53",
+        "name": "Ligue 1",
+        "persian": "لیگ ۱ فرانسه"
+    },
+    {
+        "id": "134",
+        "name": "Coupe de France",
+        "persian": "جام حذفی فرانسه"
+    },
+    {
+        "id": "207",
+        "name": "Trophée des Champions",
+        "persian": "سوپرجام فرانسه"
+    },
+    {
+        "id": "42",
+        "name": "Champions League",
+        "persian": "لیگ قهرمانان اروپا"
+    },
+    {
+        "id": "73",
+        "name": "Europa League",
+        "persian": "لیگ اروپا"
+    },
+    {
+        "id": "10216",
+        "name": "Conference League",
+        "persian": "لیگ کنفرانس اروپا"
+    },
+    {
+        "id": "74",
+        "name": "UEFA Super Cup",
+        "persian": "سوپرجام اروپا"
+    },
+    {
+        "id": "525",
+        "name": "AFC Champions League Elite",
+        "persian": "لیگ قهرمانان آسیا الیت"
+    },
+    {
+        "id": "9469",
+        "name": "AFC Champions League Two",
+        "persian": "لیگ قهرمانان آسیا ۲"
+    },
+    {
+        "id": "297",
+        "name": "CONCACAF Champions Cup",
+        "persian": "جام قهرمانان کونکاکاف"
+    },
+    {
+        "id": "526",
+        "name": "CAF Champions League",
+        "persian": "لیگ قهرمانان آفریقا"
+    },
+    {
+        "id": "45",
+        "name": "Copa Libertadores",
+        "persian": "کوپا لیبرتادورس"
+    },
+    {
+        "id": "78",
+        "name": "FIFA Club World Cup",
+        "persian": "جام جهانی باشگاه‌ها"
+    },
+    {
+        "id": "10703",
+        "name": "FIFA Intercontinental Cup",
+        "persian": "جام بین‌قاره‌ای فیفا"
+    },
+    {
+        "id": "77",
+        "name": "World Cup",
+        "persian": "جام جهانی"
+    },
+    {
+        "id": "50",
+        "name": "European Championship",
+        "persian": "جام ملت‌های اروپا"
+    },
+    {
+        "id": "44",
+        "name": "Copa América",
+        "persian": "کوپا آمریکا"
+    },
+    {
+        "id": "290",
+        "name": "AFC Asian Cup",
+        "persian": "جام ملت‌های آسیا"
+    },
+    {
+        "id": "289",
+        "name": "Africa Cup of Nations",
+        "persian": "جام ملت‌های آفریقا"
+    },
+    {
+        "id": "298",
+        "name": "CONCACAF Gold Cup",
+        "persian": "جام طلایی کونکاکاف"
+    },
+    {
+        "id": "9806",
+        "name": "UEFA Nations League A",
+        "persian": "لیگ ملت‌های اروپا سطح A"
+    },
+    {
+        "id": "9807",
+        "name": "UEFA Nations League B",
+        "persian": "لیگ ملت‌های اروپا سطح B"
+    },
+    {
+        "id": "9808",
+        "name": "UEFA Nations League C",
+        "persian": "لیگ ملت‌های اروپا سطح C"
+    },
+    {
+        "id": "9809",
+        "name": "UEFA Nations League D",
+        "persian": "لیگ ملت‌های اروپا سطح D"
+    },
+    {
+        "id": "9821",
+        "name": "CONCACAF Nations League",
+        "persian": "لیگ ملت‌های کونکاکاف"
+    }
+]
