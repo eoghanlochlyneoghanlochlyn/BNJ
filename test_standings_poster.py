@@ -103,7 +103,7 @@ class StandingsTests(unittest.TestCase):
     def test_best_third_title_is_persian(self):
         self.assertEqual(_group_display_name("Best 3rd placed teams"), "برترین تیم های سوم")
 
-    def test_render_compact_combined_group_poster_with_all_third_place_teams(self):
+    def test_render_vertical_combined_group_poster_with_all_third_place_teams(self):
         def row(i):
             return {
                 "rank": i, "teamId": str(9000 + i), "teamName": f"Team {i}",
@@ -131,7 +131,7 @@ class StandingsTests(unittest.TestCase):
             from PIL import Image
             with Image.open(output) as image:
                 self.assertEqual(image.size[0], 1600)
-                self.assertLess(image.size[1], 3000)
+                self.assertGreater(image.size[1], 6000)
 
     def test_render_individual_group(self):
         rows = []
