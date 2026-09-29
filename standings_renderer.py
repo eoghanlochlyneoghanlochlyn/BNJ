@@ -579,8 +579,8 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
     score, penalty = _knockout_match_score(matchup)
     score_x = x + 44
     name_right = x + w - 22
-    home_y = y + 34
-    away_y = y + 72
+    home_y = y + 32
+    away_y = y + 82
 
     def team_row(yy, name, logo, score_value):
         logo_width = logo.width if logo else 0
@@ -604,8 +604,8 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
     team_row(away_y, away_name, away_logo, matchup.get("awayScore"))
 
     if penalty:
-        _draw_text(draw, (x + w / 2, y + h - 10), penalty,
-                   _font(17, True), MUTED, "ms")
+        _draw_text(draw, (x + w / 2, y + h - 11), penalty,
+                   _font(16, True), MUTED, "ms")
 
 def _knockout_stage_key(stage: dict) -> int:
     """Return the canonical tournament order for a knockout round."""
@@ -791,7 +791,7 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     cols = len(rounds)
     side = 42
     gap = 22
-    card_h = 132
+    card_h = 140
     usable_width = WIDTH - 2 * side - gap * (cols - 1)
     card_w = max(245, min(330, usable_width // cols))
 
