@@ -744,27 +744,40 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     usable_width = WIDTH - 2 * side - gap * (cols - 1)
     card_w = max(245, min(330, usable_width // cols))
 
-    # Use one common vertical envelope for every round.  Each column gets
-    # evenly spaced slots inside that envelope, so when the number of matches
-    # halves (8 -> 4 -> 2 -> 1) its vertical spacing halves as well.  This is
-    # both safer for irregular FotMob data and prevents the bottom half from
-    # drifting or producing missing center coordinates.
-    first_count = max(
-        1, max(len(round_data.get("matchups") or []) for round_data in rounds)
-    )
+    # Build a real tournament-tree geometry. The first round is spread out;
+    # every later round is positioned at the midpoint of the source matches
+    # that feed it. Therefore the distance from the first to the last card
+    # shrinks naturally as the number of matches halves:
+    # 8 -> 4 -> 2 -> 1.
+    first_count = max(1, len(rounds[0].get("matchups") or []))
     body_top = HEADER_H + 70
-    envelope_h = max(1180, (first_count - 1) * 150)
+    first_step = max(card_h + 46, 154)
     top_center = body_top + card_h / 2
-    bottom_center = top_center + envelope_h
+    first_centers = [
+        top_center + i * first_step
+        for i in range(first_count)
+    ]
 
-    all_centers: list[list[float]] = []
-    for round_data in rounds:
-        count = max(1, len(round_data.get("matchups") or []))
-        if count == 1:
-            centers = [(top_center + bottom_center) / 2]
-        else:
-            step = envelope_h / (count - 1)
-            centers = [top_center + i * step for i in range(count)]
+    all_centers: list[list[float]] = [first_centers]
+    for ri in range(1, len(rounds)):
+        previous = all_centers[-1]
+        previous_count = len(previous)
+        current_count = max(1, len(rounds[ri].get("matchups") or []))
+        centers: list[float] = []
+
+        # Map each next-round matchup to the contiguous source-match range
+        # that feeds it. For the normal knockout shape this is exactly
+        # (0,1), (2,3), ... and gives the desired midpoint geometry. The
+        # proportional mapping also remains safe for unusual FotMob counts.
+        for i in range(current_count):
+            start = (i * previous_count) // current_count
+            end = ((i + 1) * previous_count) // current_count - 1
+            start = min(start, previous_count - 1)
+            end = min(max(end, start), previous_count - 1)
+            centers.append(
+                (previous[start] + previous[end]) / 2
+            )
+
         all_centers.append(centers)
 
     last_center = max(max(c) for c in all_centers if c)
