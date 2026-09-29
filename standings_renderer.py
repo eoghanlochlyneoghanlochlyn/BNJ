@@ -234,7 +234,7 @@ def _draw_table(draw, image, x1, y, x2, table):
             if value is None:
                 value = "—"
             text = _persian_digits(value)
-            font = _font(35, True)
+            font = _font(38, True)
             # Numeric cells are explicitly LTR so a negative goal difference
             # renders as -۳ rather than ۳- in the visual order.
             _draw_text(
