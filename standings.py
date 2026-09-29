@@ -372,6 +372,152 @@ def _normalize_knockout_round(round_data: dict) -> dict | None:
     }
 
 
+def _collect_explicit_shootout_sections(node: Any, result: list[Any] | None = None) -> list[Any]:
+    """Collect only explicit penalty-shootout sections from a FotMob payload."""
+    if result is None:
+        result = []
+    explicit_keys = {
+        "penaltyShootout", "penalty_shootout", "shootout",
+        "penaltyShootoutEvents", "penalty_shootout_events",
+    }
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key in explicit_keys and isinstance(value, (dict, list)):
+                result.append(value)
+                _collect_explicit_shootout_sections(value, result)
+            elif isinstance(value, (dict, list)):
+                _collect_explicit_shootout_sections(value, result)
+    elif isinstance(node, list):
+        for item in node:
+            if isinstance(item, (dict, list)):
+                _collect_explicit_shootout_sections(item, result)
+    return result
+
+
+def _collect_event_lists(node: Any, result: list[list[dict]] | None = None) -> list[list[dict]]:
+    if result is None:
+        result = []
+    if isinstance(node, list):
+        if node and all(isinstance(item, dict) for item in node):
+            result.append(node)
+        for item in node:
+            if isinstance(item, (dict, list)):
+                _collect_event_lists(item, result)
+    elif isinstance(node, dict):
+        preferred = {
+            "events", "incidents", "chronological",
+            "penaltyShootoutEvents", "penalty_shootout_events",
+            "periods", "timeline", "items",
+        }
+        for key, value in node.items():
+            if isinstance(value, (dict, list)):
+                if key in preferred or key not in preferred:
+                    _collect_event_lists(value, result)
+    return result
+
+
+def _is_penalty_shootout_event(event: dict) -> bool:
+    if not isinstance(event, dict):
+        return False
+    if event.get("isPenaltyShootoutEvent") is True:
+        return True
+    for key in (
+        "period", "periodName", "periodType", "matchPeriod",
+        "stage", "stageName", "incidentType", "eventType",
+        "incidentClass", "type",
+    ):
+        value = event.get(key)
+        if isinstance(value, dict):
+            value = value.get("name") or value.get("type") or value.get("key") or value.get("value")
+        text = _clean(value).lower()
+        compact = text.replace(" ", "").replace("_", "").replace("-", "")
+        if "penaltyshootout" in compact or compact == "shootout":
+            return True
+    return False
+
+
+def _shootout_score_from_events(node: Any, home_id: Any, away_id: Any) -> dict | None:
+    sections = _collect_explicit_shootout_sections(node)
+    if not sections:
+        return None
+    event_lists: list[list[dict]] = []
+    for section in sections:
+        event_lists.extend(_collect_event_lists(section))
+    if not event_lists:
+        return None
+
+    seen: set[str] = set()
+    home_score = 0
+    away_score = 0
+    for events in event_lists:
+        for event in events:
+            if not _is_penalty_shootout_event(event):
+                continue
+            fingerprint = repr(sorted((str(k), repr(v)) for k, v in event.items()))
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+
+            scored = None
+            for key in ("isGoal", "isScored", "scored", "converted", "success", "successful"):
+                value = event.get(key)
+                if isinstance(value, bool):
+                    scored = value
+                    break
+
+            event_text = " ".join(
+                str(event.get(key, "")) for key in
+                ("type", "eventType", "incidentType", "incidentClass", "description", "reason")
+            ).lower()
+            if any(word in event_text for word in ("miss", "saved", "save", "off target", "woodwork")):
+                scored = False
+            if scored is False:
+                continue
+
+            team_id = event.get("teamId")
+            is_home = event.get("isHome")
+            if home_id is not None and team_id is not None:
+                if str(team_id) == str(home_id):
+                    is_home = True
+                elif away_id is not None and str(team_id) == str(away_id):
+                    is_home = False
+
+            if is_home is True:
+                home_score += 1
+            elif is_home is False:
+                away_score += 1
+
+    if home_score == 0 and away_score == 0:
+        return None
+    return {"home": home_score, "away": away_score}
+
+
+def _find_match_ids(node: Any) -> list[str]:
+    """Find actual FotMob match IDs in a matchup, not team IDs."""
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            for key in ("matchId", "match_id", "matchID"):
+                candidate = value.get(key)
+                if candidate is not None:
+                    text = str(candidate)
+                    if text not in seen:
+                        seen.add(text)
+                        found.append(text)
+            for child in value.values():
+                if isinstance(child, (dict, list)):
+                    walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                if isinstance(child, (dict, list)):
+                    walk(child)
+
+    walk(node)
+    return found
+
+
 def _coerce_score_pair(value: Any) -> dict | None:
     if isinstance(value, dict):
         home = value.get("home")
@@ -440,7 +586,7 @@ def _find_shootout_score(node: Any) -> dict | None:
     return None
 
 
-def _fetch_penalty_score(match_id: Any) -> dict | None:
+def _fetch_penalty_score(match_id: Any, home_id: Any = None, away_id: Any = None) -> dict | None:
     if not match_id:
         return None
     try:
@@ -455,39 +601,45 @@ def _fetch_penalty_score(match_id: Any) -> dict | None:
         if not isinstance(payload, dict):
             return None
 
-        # Match the exact logic used by Ftbllrslts: explicit shootout
-        # fields first, then the explicit shootout event section.
         content = payload.get("content")
         if not isinstance(content, dict):
             content = {}
+
         for key in ("penaltyScore", "penalty_score", "shootoutScore", "shootout_score"):
             score = _coerce_score_pair(content.get(key))
             if score is not None:
                 return score
-        for section in _collect_shootout_sections(content):
+
+        for section in _collect_explicit_shootout_sections(content):
             score = _find_shootout_score(section)
             if score is not None:
                 return score
+
+        score = _shootout_score_from_events(content, home_id, away_id)
+        if score is not None:
+            return score
+
         return _find_shootout_score(payload)
     except (requests.RequestException, ValueError) as error:
         print(f"[STANDINGS] knockout match {match_id}: penalty details unavailable: {error}")
         return None
 
-
 def _enrich_knockout_penalties(rounds: list[dict]) -> None:
-    """Fill shootout scores from match details without changing home/away semantics."""
+    """Fill shootout scores from the actual matchDetails payload."""
     for round_data in rounds:
         for matchup in round_data.get("matchups", []):
-            matches = matchup.get("matches") or []
-            for match in matches:
-                if not isinstance(match, dict):
-                    continue
-                match_id = match.get("matchId") or match.get("id")
-                score = _fetch_penalty_score(match_id)
+            match_ids = _find_match_ids(matchup.get("matches") or [])
+            if not match_ids:
+                match_ids = _find_match_ids(matchup.get("raw") or {})
+            for match_id in match_ids:
+                score = _fetch_penalty_score(
+                    match_id,
+                    matchup.get("homeTeamId"),
+                    matchup.get("awayTeamId"),
+                )
                 if score is not None:
                     matchup["penaltyScore"] = score
                     break
-
 
 def _extract_knockout(data: dict) -> list[dict]:
     result: list[dict] = []
