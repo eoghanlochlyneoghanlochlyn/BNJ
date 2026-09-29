@@ -86,18 +86,18 @@ def _competition_display_name(competition_id: str, english_name: str) -> str:
 
 
 def _table_widths():
-    # RTL visual order: امتیاز ← تفاضل ← گل‌خورده ← گل‌زده ← باخت ← مساوی ← برد ← بازی ← تیم ← رتبه
+    # Keep the complete standard FotMob league columns inside the poster.
     return {
-        "rank": 78,
-        "team": 620,
-        "played": 95,
-        "wins": 95,
-        "draws": 95,
-        "losses": 95,
-        "gf": 110,
-        "ga": 110,
-        "gd": 120,
-        "points": 115,
+        "rank": 62,
+        "team": 470,
+        "played": 90,
+        "wins": 90,
+        "draws": 90,
+        "losses": 90,
+        "gf": 105,
+        "ga": 105,
+        "gd": 105,
+        "points": 113,
     }
 
 
