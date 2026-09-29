@@ -5,7 +5,7 @@ import requests
 
 from fotmob import FOTMOB_BASE_URL, HEADERS, _parse_utc, _normalize_match
 from results import score_for
-from renderer import render_fixtures, _result_label_for_rtl
+from renderer import render_fixtures, _result_label_for_rtl, _competition_name
 from telegram import send_photo, send_photos
 
 
@@ -81,6 +81,9 @@ def assert_score_ordering():
 
 def main():
     assert_score_ordering()
+    assert _competition_name({"leagueId": "207", "competitionName": "Trophée des champions"}) == "سوپرجام فرانسه"
+    assert _competition_name({"leagueId": "53", "competitionName": "Trophée des Champions"}) == "سوپرجام فرانسه"
+    assert _competition_name({"leagueId": "53", "competitionName": "Ligue 1"}) == "لیگ ۱ فرانسه"
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--send-telegram", action="store_true")
