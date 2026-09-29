@@ -45,12 +45,41 @@ jobs:
           import datetime as dt
           import sys
           from pathlib import Path
-          from standings import fetch_standings
-          from standings_renderer import render_standings
+          from standings import all_groups_complete, fetch_standings, is_grouped_standings
+          from standings_renderer import render_group_standings, render_standings
           competition_id = sys.argv[1]
           season = sys.argv[2] or None
+          day = dt.datetime.now(dt.timezone.utc).date()
           data = fetch_standings(competition_id, season)
-          render_standings(data, dt.datetime.now(dt.timezone.utc).date(), Path("output/standings") / f"{competition_id}.png")
+          output_dir = Path("output/standings") / competition_id
+          output_dir.mkdir(parents=True, exist_ok=True)
+
+          if is_grouped_standings(data):
+              for index, table in enumerate(data["tables"], start=1):
+                  group = str(table.get("group") or f"Group {index}")
+                  safe_group = "".join(ch if ch.isalnum() else "_" for ch in group).strip("_")
+                  render_group_standings(
+                      data,
+                      table,
+                      day,
+                      output_dir / f"{competition_id}_{index}_{safe_group}.png",
+                  )
+
+              if all_groups_complete(data):
+                  render_standings(
+                      data,
+                      day,
+                      output_dir / f"{competition_id}_ALL_GROUPS_FINAL.png",
+                  )
+                  print(f"[STANDINGS] {competition_id}: all groups complete -> final combined poster")
+              else:
+                  print(f"[STANDINGS] {competition_id}: group stage not complete -> no final combined poster")
+          else:
+              render_standings(
+                  data,
+                  day,
+                  output_dir / f"{competition_id}.png",
+              )
           PY
           done
 
@@ -81,6 +110,6 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           from telegram import send_photo
-          for path in sorted(Path("output/standings").glob("*.png")):
+          for path in sorted(Path("output/standings").rglob("*.png")):
               send_photo(path, "📊 جدول رقابت")
           PY
