@@ -261,14 +261,23 @@ def render_standings(data: dict, day, output: Path) -> None:
     draw.rounded_rectangle((MARGIN_X, 34, WIDTH - MARGIN_X, 42), radius=4, fill=ACCENT)
     draw.line((MARGIN_X, HEADER_H - 22, WIDTH - MARGIN_X, HEADER_H - 22), fill=BORDER, width=2)
 
-    _draw_text(draw, (WIDTH - MARGIN_X, 78), f"جدول {competition}", _font(52, True), TEXT, "ra")
-    _draw_text(draw, (WIDTH - MARGIN_X, 142), season, _font(27), MUTED, "ra")
+    league_logo = _league_logo(competition_id)
+    title_y = 78
+    title_right = WIDTH - MARGIN_X
+    if league_logo:
+        logo_x = title_right - 34
+        image.alpha_composite(
+            league_logo,
+            (int(logo_x - league_logo.width), int(title_y - league_logo.height / 2)),
+        )
+        title_right = logo_x - 20
 
-    try:
-        jalali = _jalali_date(day)
-    except Exception:
-        jalali = str(day)
-    _draw_text(draw, (MARGIN_X, 112), _persian_digits(jalali.replace("/", " / ")), _latin_font(24), MUTED, "la", "ltr")
+    _draw_text(draw, (title_right, title_y), f"جدول {competition}", _font(52, True), TEXT, "ra")
+
+    # Render the season with a Latin-capable font so the slash is not lost.
+    season_text = season.replace("2026/2027", "2026/27") if season else ""
+    if season_text:
+        _draw_text(draw, (title_right, 142), season_text, _latin_font(27), MUTED, "ra", "ltr")
 
     y = HEADER_H
     for index, table in enumerate(tables):
