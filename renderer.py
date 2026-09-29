@@ -21,7 +21,7 @@ CARD_RADIUS = 26
 COMPETITION_GAP = 28
 MATCH_ROW_H = 142
 COMPACT_MATCH_ROW_H = 126
-TWO_COLUMN_THRESHOLD = 9
+TWO_COLUMN_THRESHOLD = 11
 MAX_MATCHES_PER_COLUMN = 10
 
 KNOCKOUT_COMPETITION_IDS = {
@@ -704,13 +704,23 @@ def _render_page(groups, day, page_no, page_total, output, cards_per_row):
     render_groups = groups
 
     if two_column:
+        # render_fixtures() already assigned every group to a column while
+        # enforcing the 10-match cap. Respect that assignment here instead of
+        # rebalancing groups and accidentally putting 20 matches in one column.
         columns = [[], []]
         heights = [0, 0]
-        for competition, items in groups:
-            comp_h = header_h + len(items) * row_h + max(0, len(items)-1)
-            target = 0 if heights[0] <= heights[1] else 1
+        for entry in groups:
+            if len(entry) == 3:
+                competition, items, target = entry
+            else:
+                competition, items = entry
+                target = 0 if heights[0] <= heights[1] else 1
+            target = 0 if int(target) <= 0 else 1
             columns[target].append((competition, items))
-            heights[target] += comp_h + (COMPETITION_GAP if len(columns[target]) > 1 else 0)
+            comp_h = header_h + len(items) * row_h + max(0, len(items)-1)
+            heights[target] += comp_h + (
+                COMPETITION_GAP if len(columns[target]) > 1 else 0
+            )
         content_h = max(heights)
     else:
         comp_heights = [header_h + len(items) * row_h + max(0, len(items)-1) for _, items in groups]
@@ -768,7 +778,18 @@ def render_fixtures(matches: list[dict], day: dt.date, output: Path) -> None:
     if not features.check("raqm"):
         raise RuntimeError("Pillow was built without libraqm; Persian RTL rendering cannot be trusted.")
 
-    groups = _group_matches(matches)
+    grouped = _group_matches(matches)
+
+    # A competition card is never allowed to put more than 10 matches in one
+    # column. If a competition itself has more than 10 matches, split it into
+    # consecutive chunks and repeat the competition header for each chunk.
+    groups = []
+    for competition, items in grouped:
+        for start in range(0, len(items), MAX_MATCHES_PER_COLUMN):
+            groups.append(
+                (competition, items[start:start + MAX_MATCHES_PER_COLUMN])
+            )
+
     use_two_columns = len(matches) >= TWO_COLUMN_THRESHOLD
     cards_per_row = 2 if use_two_columns else 1
     row_h = COMPACT_MATCH_ROW_H if use_two_columns else MATCH_ROW_H
@@ -817,7 +838,7 @@ def render_fixtures(matches: list[dict], day: dt.date, output: Path) -> None:
     page_total = len(pages)
     if page_total == 1:
         if use_two_columns:
-            _render_page([(c, items) for c, items, _ in pages[0]], day, 1, 1, output, 2)
+            _render_page(pages[0], day, 1, 1, output, 2)
         else:
             _render_page(pages[0], day, 1, 1, output, 1)
         return
@@ -827,7 +848,7 @@ def render_fixtures(matches: list[dict], day: dt.date, output: Path) -> None:
     for index, page in enumerate(pages, start=1):
         path = output.with_name(f"{stem}-{index}{suffix}")
         if use_two_columns:
-            _render_page([(c, items) for c, items, _ in page], day, index, page_total, path, 2)
+            _render_page(page, day, index, page_total, path, 2)
         else:
             _render_page(page, day, index, page_total, path, 1)
         generated.append(path)
