@@ -21,6 +21,7 @@ ACCENT = (42, 112, 193)
 ROW_H = 88
 HEADER_ROW_H = 72
 CARD_RADIUS = 26
+ACTIVE_STAGE_BG = (27, 45, 69)
 LOGO_SIZE = 58
 LOGO_DIR = Path("output/team_logos")
 LOGO_DIR.mkdir(parents=True, exist_ok=True)
@@ -534,7 +535,7 @@ def _knockout_stage_font_size(stage: str) -> int:
 
 
 def _knockout_match_score(matchup: dict) -> tuple[str, str | None]:
-    """Return the displayed match/aggregate score and shootout score."""
+    """Return the displayed match score and separate shootout score."""
     home = matchup.get("homeScore")
     away = matchup.get("awayScore")
     if home is None or away is None:
@@ -542,46 +543,69 @@ def _knockout_match_score(matchup: dict) -> tuple[str, str | None]:
     score = f"{_persian_digits(home)} - {_persian_digits(away)}"
     penalty = matchup.get("penaltyScore")
     if isinstance(penalty, dict) and penalty.get("home") is not None and penalty.get("away") is not None:
-        penalty_text = f"({_persian_digits(penalty['home'])}) - ({_persian_digits(penalty['away'])})"
+        penalty_text = f"پنالتی ({_persian_digits(penalty['home'])} - {_persian_digits(penalty['away'])})"
     else:
         penalty_text = None
     return score, penalty_text
 
 
+def _fit_knockout_name(draw, name: str, right: float, left: float):
+    """Choose a font that keeps the team name out of the score column."""
+    for size in (22, 21, 20, 19, 18, 17):
+        font = _font(size, True)
+        bbox = draw.textbbox((0, 0), name, font=font, anchor="rm",
+                             direction="rtl", language="fa")
+        if bbox[2] - bbox[0] <= max(30, right - left):
+            return font
+    return _font(17, True)
+
+
 def _draw_knockout_match(draw, image, x, y, w, h, matchup):
-    draw.rounded_rectangle((x, y, x + w, y + h), radius=16, fill=CARD, outline=BORDER, width=2)
-    number = _persian_digits(matchup.get("number", ""))
-    _draw_text(draw, (x + w - 18, y + 18), f"#{number}", _latin_font(20, True), MUTED, "ra", "ltr")
+    draw.rounded_rectangle(
+        (x, y, x + w, y + h), radius=16, fill=CARD, outline=BORDER, width=2
+    )
 
     home_id = str(matchup.get("homeTeamId") or "")
     away_id = str(matchup.get("awayTeamId") or "")
-    home_name = _knockout_team_name(matchup.get("homeTeam", ""), home_id, matchup.get("tbdTeam1", False))
-    away_name = _knockout_team_name(matchup.get("awayTeam", ""), away_id, matchup.get("tbdTeam2", False))
+    home_name = _knockout_team_name(
+        matchup.get("homeTeam", ""), home_id, matchup.get("tbdTeam1", False)
+    )
+    away_name = _knockout_team_name(
+        matchup.get("awayTeam", ""), away_id, matchup.get("tbdTeam2", False)
+    )
     home_logo = _team_logo(home_id)
     away_logo = _team_logo(away_id)
 
     score, penalty = _knockout_match_score(matchup)
-    score_x = x + 48
-    name_right = x + w - 24
-    row_h = 48
-    home_y = y + 30
-    away_y = y + 78
+    score_x = x + 44
+    name_right = x + w - 22
+    home_y = y + 34
+    away_y = y + 72
 
     def team_row(yy, name, logo, score_value):
+        logo_width = logo.width if logo else 0
         if logo:
-            image.alpha_composite(logo, (int(name_right - logo.width - 12), int(yy - logo.height / 2)))
-            text_right = name_right - logo.width - 22
+            logo_x = name_right - logo_width
+            image.alpha_composite(logo, (int(logo_x), int(yy - logo.height / 2)))
+            text_right = logo_x - 10
         else:
             text_right = name_right
-        _draw_text(draw, (text_right, yy), name, _font(22, True), TEXT, "rm")
-        _draw_text(draw, (score_x, yy), _persian_digits(score_value) if score_value is not None else "—", _font(28, True), TEXT, "lm", "ltr")
+
+        text_left = score_x + 30
+        font = _fit_knockout_name(draw, name, text_right, text_left)
+        _draw_text(draw, (text_right, yy), name, font, TEXT, "rm")
+        _draw_text(
+            draw, (score_x, yy),
+            _persian_digits(score_value) if score_value is not None else "—",
+            _font(27, True), TEXT, "lm", "ltr"
+        )
 
     team_row(home_y, home_name, home_logo, matchup.get("homeScore"))
     team_row(away_y, away_name, away_logo, matchup.get("awayScore"))
 
     if penalty:
-        _draw_text(draw, (x + w / 2, y + h - 11), f"پنالتی {penalty}", _font(18, True), MUTED, "ms")
-
+        _draw_text(draw, (x + w / 2, y + h - 10), penalty,
+                   _font(17, True), MUTED, "ms")
 
 def _knockout_stage_key(stage: dict) -> int:
     """Return the canonical tournament order for a knockout round."""
@@ -713,6 +737,33 @@ def _ensure_full_knockout_bracket(rounds: list[dict]) -> list[dict]:
     return unique
 
 
+def _knockout_stage_is_active(round_data: dict) -> bool:
+    """Detect a currently live/ongoing round from FotMob payloads."""
+    def walk(value: Any) -> bool:
+        if isinstance(value, dict):
+            for key in ("isLive", "is_live", "ongoing", "inProgress", "in_progress", "live"):
+                if value.get(key) is True:
+                    return True
+            for key in ("status", "matchStatus", "state"):
+                raw = value.get(key)
+                if isinstance(raw, str) and raw.casefold() in {
+                    "live", "ongoing", "in progress", "inprogress", "started",
+                    "1h", "2h", "et", "pen",
+                }:
+                    return True
+            return any(
+                walk(v) for v in value.values()
+                if isinstance(v, (dict, list))
+            )
+        if isinstance(value, list):
+            return any(walk(v) for v in value if isinstance(v, (dict, list)))
+        return False
+
+    return walk(round_data.get("raw", {})) or any(
+        walk(m.get("raw", {})) for m in round_data.get("matchups", [])
+    )
+
+
 def render_knockout_standings(data: dict, day, output: Path, stage: dict | None = None) -> None:
     """Render a compact professional bracket that always reaches the final."""
     source_rounds = list(data.get("knockoutRounds") or [])
@@ -740,7 +791,7 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     cols = len(rounds)
     side = 42
     gap = 22
-    card_h = 112
+    card_h = 132
     usable_width = WIDTH - 2 * side - gap * (cols - 1)
     card_w = max(245, min(330, usable_width // cols))
 
@@ -805,6 +856,13 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     for ri, round_data in enumerate(rounds):
         x = side + ri * (card_w + gap)
         stage_name = str(round_data.get("stage") or "مرحله حذفی")
+        if _knockout_stage_is_active(round_data):
+            stage_top = body_top - 52
+            stage_bottom = all_centers[ri][-1] + card_h / 2 + 26
+            draw.rounded_rectangle(
+                (x - 10, stage_top, x + card_w + 10, stage_bottom),
+                radius=22, fill=ACTIVE_STAGE_BG, outline=BORDER, width=1
+            )
         _draw_text(
             draw,
             (x + card_w / 2, body_top - 16),
