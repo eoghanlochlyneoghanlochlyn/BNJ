@@ -265,16 +265,17 @@ def _draw_table(draw, image, x1, y, x2, table):
 
 
 def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
-    """Draw the standings title while keeping Nations League A-D Latin."""
-    match = re.fullmatch(r"(جدول لیگ ملت‌های اروپا) ([ABCD])", title_text)
+    """Draw standings titles with Latin group/level letters using a Latin font."""
+    match = re.fullmatch(r"(جدول .+?)(?: \| )?(گروه) ([A-Za-z0-9]+)$", title_text)
     if not match:
         _draw_text(draw, (right_x, y), title_text, _font(52, True), TEXT, "rm")
         return
 
-    base_text, level = match.groups()
+    base_text, group_word, group_label = match.groups()
     base_font = _font(52, True)
-    level_font = _latin_font(42, True)
-    gap = 18
+    group_word_font = _font(48, True)
+    group_label_font = _latin_font(42, True) if group_label.isalpha() else _font(42, True)
+    gap = 14
 
     base_bbox = draw.textbbox(
         (0, 0), base_text, font=base_font, anchor="ra",
@@ -282,35 +283,32 @@ def _draw_standings_title(draw, right_x: int, y: int, title_text: str):
     )
     base_width = base_bbox[2] - base_bbox[0]
 
-    level_bbox = draw.textbbox(
-        (0, 0), level, font=level_font, anchor="ra", direction="ltr"
-    )
-    level_width = level_bbox[2] - level_bbox[0]
-
-    # The level is immediately to the left of the Persian title, with its
-    # own Latin-capable font. Align both actual ink boxes vertically.
-    level_right = right_x - base_width - gap
-
-    base_bbox_at_y = draw.textbbox(
-        (right_x, y), base_text, font=base_font, anchor="ra",
+    group_word_bbox = draw.textbbox(
+        (0, 0), group_word, font=group_word_font, anchor="ra",
         direction="rtl", language="fa"
     )
-    base_center = (base_bbox_at_y[1] + base_bbox_at_y[3]) / 2
-    base_y = y + (y - base_center)
-    draw.text(
-        (right_x, base_y), base_text, font=base_font, fill=TEXT, anchor="ra",
-        direction="rtl", language="fa"
-    )
+    group_word_width = group_word_bbox[2] - group_word_bbox[0]
 
-    level_bbox_at_y = draw.textbbox(
-        (level_right, y), level, font=level_font, anchor="ra", direction="ltr"
+    group_label_bbox = draw.textbbox(
+        (0, 0), group_label, font=group_label_font, anchor="ra", direction="ltr"
     )
-    level_center = (level_bbox_at_y[1] + level_bbox_at_y[3]) / 2
-    level_y = y + (y - level_center)
-    draw.text(
-        (level_right, level_y), level, font=level_font, fill=TEXT, anchor="ra",
-        direction="ltr"
-    )
+    group_label_width = group_label_bbox[2] - group_label_bbox[0]
+
+    group_label_right = right_x - base_width - gap
+    group_word_right = group_label_right - group_label_width - gap
+
+    def draw_centered(text, x_right, font, direction, language=None):
+        kwargs = {"anchor": "ra", "direction": direction}
+        if language:
+            kwargs["language"] = language
+        bbox = draw.textbbox((x_right, y), text, font=font, **kwargs)
+        center = (bbox[1] + bbox[3]) / 2
+        adjusted_y = y + (y - center)
+        draw.text((x_right, adjusted_y), text, font=font, fill=TEXT, **kwargs)
+
+    draw_centered(base_text, right_x, base_font, "rtl", "fa")
+    draw_centered(group_word, group_word_right, group_word_font, "rtl", "fa")
+    draw_centered(group_label, group_label_right, group_label_font, "ltr")
 
 
 def render_standings(data: dict, day, output: Path, title_suffix: str | None = None) -> None:
@@ -391,11 +389,40 @@ def render_standings(data: dict, day, output: Path, title_suffix: str | None = N
     y = HEADER_H
     for index, table in enumerate(tables):
         x1, x2 = MARGIN_X, WIDTH - MARGIN_X
-        group = str(table.get("group") or "").strip()
+        group = _group_display_name(table.get("group"))
 
         extra = 0
         if group:
-            _draw_text(draw, (x2 - 24, y + 26), group, _font(29, True), TEXT, "ra")
+            group_match = re.fullmatch(r"(گروه) ([A-Za-z0-9]+)", group)
+            if group_match:
+                group_word, group_label = group_match.groups()
+                group_label_font = _latin_font(29, True) if group_label.isalpha() else _font(29, True)
+                label_bbox = draw.textbbox(
+                    (x2 - 24, y + 26),
+                    group_label,
+                    font=group_label_font,
+                    anchor="ra",
+                    direction="ltr",
+                )
+                label_width = label_bbox[2] - label_bbox[0]
+                _draw_text(
+                    draw,
+                    (x2 - 24 - label_width - 10, y + 26),
+                    group_word,
+                    _font(29, True),
+                    TEXT,
+                    "ra",
+                )
+                draw.text(
+                    (x2 - 24, y + 26),
+                    group_label,
+                    font=group_label_font,
+                    fill=TEXT,
+                    anchor="ra",
+                    direction="ltr",
+                )
+            else:
+                _draw_text(draw, (x2 - 24, y + 26), group, _font(29, True), TEXT, "ra")
             extra = 54
 
         table_y = y + extra
