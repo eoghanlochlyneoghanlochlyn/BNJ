@@ -121,9 +121,10 @@ def _extract_tables(data: dict) -> list[dict]:
             continue
 
         group_name = _clean(
-            node.get("name")
-            or node.get("groupName")
+            node.get("groupName")
+            or node.get("name")
             or node.get("title")
+            or node.get("leagueName")
             or table.get("name")
         )
 
@@ -132,9 +133,22 @@ def _extract_tables(data: dict) -> list[dict]:
         if not group_name:
             raw_group = node.get("group")
             if isinstance(raw_group, dict):
-                group_name = _clean(raw_group.get("name") or raw_group.get("displayName"))
+                group_name = _clean(
+                    raw_group.get("name")
+                    or raw_group.get("displayName")
+                    or raw_group.get("label")
+                )
             elif isinstance(raw_group, str):
                 group_name = _clean(raw_group)
+
+        if not group_name:
+            raw_data = node.get("data")
+            if isinstance(raw_data, dict):
+                group_name = _clean(
+                    raw_data.get("groupName")
+                    or raw_data.get("group")
+                    or raw_data.get("leagueName")
+                )
 
         tables.append(
             {
@@ -187,6 +201,34 @@ def _extract_competition(data: dict, fallback_id: str) -> tuple[str, str]:
 
     return str(fallback_id), ""
 
+
+
+def is_grouped_standings(data: dict) -> bool:
+    """True when FotMob returned multiple distinct standings tables/groups."""
+    tables = data.get("tables") or []
+    return len(tables) > 1 and all(isinstance(table, dict) for table in tables)
+
+
+def group_stage_complete(table: dict) -> bool:
+    """A group is complete when every team has played the full round-robin schedule."""
+    rows = table.get("rows") or []
+    if len(rows) < 2:
+        return False
+
+    expected_matches_per_team = len(rows) - 1
+    for row in rows:
+        played = _as_int(row.get("played"))
+        if played is None or played < expected_matches_per_team:
+            return False
+    return True
+
+
+def all_groups_complete(data: dict) -> bool:
+    """True only after every returned group has completed its group-stage schedule."""
+    tables = data.get("tables") or []
+    return bool(tables) and is_grouped_standings(data) and all(
+        group_stage_complete(table) for table in tables
+    )
 
 def fetch_standings(competition_id: str, season: str | None = None) -> dict:
     params = {"id": str(competition_id)}
