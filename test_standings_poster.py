@@ -13,7 +13,9 @@ class StandingsTests(unittest.TestCase):
             {"participantCount": 16, "stage": "playoff", "matchups": [
                 {"drawOrder": 1, "homeTeamId": 9829, "awayTeamId": 9847,
                  "homeTeam": "Monaco", "awayTeam": "Paris Saint-Germain",
-                 "homeScore": 4, "awayScore": 5, "bestOf": 2}
+                 "homeScore": 4, "awayScore": 5, "bestOf": 2,
+                 "aggregatedResult": {"homeScore": 4, "awayScore": 5},
+                 "penaltyScore": {"home": 3, "away": 4}}
             ]},
             {"participantCount": 8, "stage": "quarterfinal", "matchups": [
                 {"drawOrder": 1, "homeTeamId": 9825, "awayTeamId": 8456,
@@ -27,6 +29,8 @@ class StandingsTests(unittest.TestCase):
         self.assertEqual(rounds[1]["stage"], "یک‌چهارم نهایی")
         self.assertEqual(rounds[0]["matchups"][0]["homeScore"], 4)
         self.assertEqual(rounds[0]["matchups"][0]["bestOf"], 2)
+        self.assertEqual(rounds[0]["matchups"][0]["aggregatedResult"]["homeScore"], 4)
+        self.assertEqual(rounds[0]["matchups"][0]["penaltyScore"]["away"], 4)
         self.assertTrue(has_knockout({"knockoutRounds": rounds}))
 
     def test_knockout_stage_label_from_participant_count(self):
@@ -57,7 +61,7 @@ class StandingsTests(unittest.TestCase):
             from PIL import Image
             with Image.open(output) as image:
                 self.assertEqual(image.size[0], 1600)
-                self.assertGreater(image.size[1], 500)
+                self.assertGreater(image.size[1], 1500)
 
     def test_normalize_fotmob_table_rows(self):
         payload = {
