@@ -25,7 +25,7 @@ TWO_COLUMN_THRESHOLD = 9
 MAX_MATCHES_PER_COLUMN = 10
 
 KNOCKOUT_COMPETITION_IDS = {
-    "132", "133", "138", "139", "141", "207", "247", "8924", "11015", "222", "134",
+    "132", "133", "138", "139", "141", "207", "247", "8924", "11015", "222", "134", "209",
 }
 
 BG = (9, 17, 33)
@@ -383,7 +383,28 @@ def _match_stage(match: dict) -> str:
         or match.get("tournamentId")
         or ""
     )
-    if competition_id in KNOCKOUT_COMPETITION_IDS:
+    competition_name = str(
+        match.get("competitionName")
+        or match.get("competition")
+        or match.get("league")
+        or ""
+    ).strip().casefold()
+    knockout_by_name = (
+        "fa cup" in competition_name
+        or "efl cup" in competition_name
+        or "carabao cup" in competition_name
+        or "copa del rey" in competition_name
+        or "supercopa de españa" in competition_name
+        or "coppa italia" in competition_name
+        or "supercoppa italiana" in competition_name
+        or "dfb-pokal" in competition_name
+        or "dfl-supercup" in competition_name
+        or "coupe de france" in competition_name
+        or "trophée des champions" in competition_name
+        or "trophee des champions" in competition_name
+        or "community shield" in competition_name
+    )
+    if competition_id in KNOCKOUT_COMPETITION_IDS or knockout_by_name:
         if text.isdigit():
             return f"راند {_to_persian_digits(text)}"
         if low.startswith(("week ", "matchweek ", "match day ", "matchday ")):
