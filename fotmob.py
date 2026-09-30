@@ -80,18 +80,31 @@ def _normalize_match(raw: dict, league: dict) -> dict | None:
     if start_utc is None:
         return None
 
-    # FotMob's daily endpoint can expose primaryId as a parent/primary
-    # competition while the actual competition ID is in the raw match or
-    # league object. Prefer the match/league's concrete competition ID.
-    league_id = (
-        raw.get("leagueId")
-        or raw.get("competitionId")
-        or raw.get("tournamentId")
-        or league.get("id")
-        or league.get("leagueId")
-        or league.get("competitionId")
-        or league.get("primaryId")
-    )
+    # Keep ALL competition identities from FotMob. A daily match can expose
+    # a concrete group/league ID while primaryId points to the parent
+    # competition. Selection decides which identity is configured.
+    raw_ids = {
+        key: raw.get(key)
+        for key in ("leagueId", "competitionId", "tournamentId", "primaryId", "parentLeagueId")
+        if raw.get(key) not in (None, "")
+    }
+    league_ids = {
+        key: league.get(key)
+        for key in ("id", "leagueId", "competitionId", "tournamentId", "primaryId", "parentLeagueId")
+        if league.get(key) not in (None, "")
+    }
+
+    all_ids: set[str] = set()
+    for value in list(raw_ids.values()) + list(league_ids.values()):
+        all_ids.add(str(value))
+
+    # Backward-compatible canonical field. Prefer a configured ID if one is
+    # already present; otherwise keep FotMob's concrete league ID.
+    from config import COMPETITION_IDS, MAJOR_LEAGUE_IDS
+    configured_ids = COMPETITION_IDS | MAJOR_LEAGUE_IDS
+    canonical_id = next((x for x in all_ids if x in configured_ids), None)
+    if canonical_id is None:
+        canonical_id = next(iter(all_ids), "")
 
     competition_name = _clean(
         league.get("name")
@@ -124,7 +137,9 @@ def _normalize_match(raw: dict, league: dict) -> dict | None:
             "id": str(away.get("id") or away.get("teamId") or ""),
             "name": away_name,
         },
-        "leagueId": str(league_id) if league_id is not None else "",
+        "leagueId": str(canonical_id),
+        "competitionIds": sorted(all_ids),
+        "rawLeague": league,
         "competitionName": competition_name,
         "rawStatus": status,
         "rawHome": home,
@@ -140,7 +155,6 @@ def _normalize_match(raw: dict, league: dict) -> dict | None:
             or f"{FOTMOB_BASE_URL}/match/{match_id}"
         ),
     }
-
 
 
 def _stage_label(value: Any) -> str:
@@ -177,7 +191,6 @@ def _extract_match_stage(details: dict) -> str:
     facts = content.get("matchFacts") or {}
     if not isinstance(facts, dict):
         facts = {}
-    page_props = ((details.get("props") or {}).get("pageProps") or {})
     info = details.get("general") or page_props.get("general") or {}
     if not isinstance(info, dict):
         info = {}
@@ -210,11 +223,6 @@ def _extract_match_stage(details: dict) -> str:
                     return label
                 return label
 
-    # Some FotMob match-details responses store the round several levels
-    # deeper than matchFacts/overview. Search the match-specific payload
-    # recursively, but only for explicit round/week/group keys. Never use
-    # leagueName as a stage: that would incorrectly render "Premier League"
-    # beside the match instead of the actual matchweek.
     def find_nested_stage(value: Any) -> str:
         if isinstance(value, dict):
             for key in ("matchRound", "leagueRoundName", "roundName", "matchweek", "matchday", "week", "round", "roundNumber"):
@@ -273,12 +281,9 @@ def enrich_match_stages(matches: list[dict]) -> None:
                 match["stage"] = stage
             print(f"[STAGE] {match['id']}: {match.get('stage') or 'unknown'}")
 
-def fetch_matches_for_iran_date(day: dt.date) -> list[dict]:
-    """Fetch fixtures from 09:00 Iran time through 09:00 the next day.
 
-    Fetch both calendar days because FotMob's daily endpoint partitions
-    matches by date, while our reporting window crosses midnight.
-    """
+def fetch_matches_for_iran_date(day: dt.date) -> list[dict]:
+    """Fetch fixtures from 09:00 Iran time through 09:00 the next day."""
     window_start = dt.datetime.combine(day, dt.time(9, 0), IRAN_TIMEZONE)
     window_end = window_start + dt.timedelta(days=1)
     result: list[dict] = []
