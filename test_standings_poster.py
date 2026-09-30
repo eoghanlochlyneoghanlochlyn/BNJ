@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 
 from standings import _extract_knockout, _extract_tables, _knockout_stage_label, _normalize_rows, all_groups_complete, group_stage_complete, has_knockout, is_grouped_standings
-from standings_renderer import _ensure_full_knockout_bracket, _group_display_name, render_group_standings, render_knockout_standings, render_standings
+import standings_renderer as standings_renderer_module
+from standings_renderer import _ensure_full_knockout_bracket, _group_display_name, _is_placeholder_team, render_group_standings, render_knockout_standings, render_standings
 
 
 class StandingsTests(unittest.TestCase):
@@ -88,6 +89,55 @@ class StandingsTests(unittest.TestCase):
             with Image.open(output) as image:
                 self.assertEqual(image.size[0], 1600)
                 self.assertGreater(image.size[1], 1500)
+
+    def test_knockout_placeholder_detection(self):
+        self.assertTrue(_is_placeholder_team("1B", "1871"))
+        self.assertTrue(_is_placeholder_team("3ADEF", "941364"))
+        self.assertTrue(_is_placeholder_team("Winner EF 3", "1871"))
+        self.assertTrue(_is_placeholder_team("Loser QF 1", "941364"))
+        self.assertTrue(_is_placeholder_team("TBD", "1871"))
+        self.assertTrue(_is_placeholder_team("", "1871", tbd=True))
+        self.assertFalse(_is_placeholder_team("Arsenal", "9825"))
+
+    def test_knockout_placeholders_never_request_logos(self):
+        rounds = _extract_knockout({"playoff": {"rounds": [
+            {"participantCount": 2, "stage": "final", "matchups": [
+                {
+                    "drawOrder": 1,
+                    "homeTeamId": "1871",
+                    "awayTeamId": "941364",
+                    "homeTeam": "1B",
+                    "awayTeam": "3ADEF",
+                    "homeScore": None,
+                    "awayScore": None,
+                    "tbdTeam1": True,
+                    "tbdTeam2": True,
+                }
+            ]}
+        ]}})
+        data = {
+            "competitionId": "50",
+            "competitionName": "European Championship",
+            "season": "2028",
+            "knockoutRounds": rounds,
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "placeholder-bracket.png"
+            original_logo_loader = standings_renderer_module._team_logo
+
+            def fail_if_logo_is_requested(_team_id):
+                raise AssertionError("placeholder team triggered a logo request")
+
+            standings_renderer_module._team_logo = fail_if_logo_is_requested
+            try:
+                render_knockout_standings(
+                    data, dt.date(2026, 9, 30), output
+                )
+            finally:
+                standings_renderer_module._team_logo = original_logo_loader
+
+            self.assertTrue(output.exists())
 
     def test_normalize_fotmob_table_rows(self):
         payload = {

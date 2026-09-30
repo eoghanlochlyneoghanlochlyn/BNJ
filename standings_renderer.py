@@ -524,16 +524,61 @@ def _render_grouped_combined(data: dict, output: Path) -> None:
 
 
 
-def _knockout_team_name(name: str, team_id: str, tbd: bool) -> str:
-    """Return a renderable team name with safe fallbacks for FotMob variants."""
+def _is_placeholder_team(
+    name: Any,
+    team_id: str = "",
+    tbd: bool = False,
+    raw: Any = None,
+) -> bool:
+    """Detect bracket placeholders before any team-logo request is made."""
+    candidates: list[str] = []
+    cleaned = _clean_knockout_team_value(name)
+    if cleaned:
+        candidates.append(cleaned)
+
+    if isinstance(raw, dict):
+        for key in (
+            "name", "teamName", "shortName", "longName",
+            "homeTeamName", "awayTeamName", "homeName", "awayName",
+        ):
+            value = _clean_knockout_team_value(raw.get(key))
+            if value:
+                candidates.append(value)
+        if raw.get("tbd") is True or raw.get("isTbd") is True:
+            return True
+
     if tbd:
-        return "تعیین نشده"
+        return True
 
+    patterns = (
+        r"^TBD(?:\s+\d+)?$",
+        r"^TBC(?:\s+\d+)?$",
+        r"^TO BE DETERMINED$",
+        r"^TO BE CONFIRMED$",
+        r"^UNKNOWN$",
+        r"^BYE$",
+        r"^(?:WINNER|LOSER)\s+[A-Z0-9][A-Z0-9 ._-]*$",
+        r"^\d+[A-Z](?:[A-Z]+)?$",
+    )
+    return any(
+        any(re.fullmatch(pattern, value, re.IGNORECASE) for pattern in patterns)
+        for value in candidates
+    )
+
+
+def _knockout_team_name(
+    name: str,
+    team_id: str,
+    tbd: bool,
+    raw: Any = None,
+) -> str:
+    """Render the actual FotMob placeholder token when one exists."""
     text = _clean_knockout_team_value(name)
-    if text:
-        return _team_name({"id": team_id, "name": text})
-
-    return "تعیین نشده"
+    if text and _is_placeholder_team(text, team_id, tbd, raw):
+        return text
+    if tbd or not text:
+        return "تعیین نشده"
+    return _team_name({"id": team_id, "name": text})
 
 
 def _clean_knockout_team_value(value: Any) -> str:
@@ -649,14 +694,29 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
 
     home_name_raw, home_id = _knockout_match_team(matchup, "home")
     away_name_raw, away_id = _knockout_match_team(matchup, "away")
+    raw_matchup = matchup.get("raw") if isinstance(matchup.get("raw"), dict) else {}
+    raw_home = raw_matchup.get("home") if isinstance(raw_matchup.get("home"), dict) else {}
+    raw_away = raw_matchup.get("away") if isinstance(raw_matchup.get("away"), dict) else {}
+
+    home_placeholder = _is_placeholder_team(
+        home_name_raw, home_id, bool(matchup.get("tbdTeam1", False)), raw_home
+    )
+    away_placeholder = _is_placeholder_team(
+        away_name_raw, away_id, bool(matchup.get("tbdTeam2", False)), raw_away
+    )
+
     home_name = _knockout_team_name(
-        home_name_raw, home_id, matchup.get("tbdTeam1", False)
+        home_name_raw, home_id, bool(matchup.get("tbdTeam1", False)), raw_home
     )
     away_name = _knockout_team_name(
-        away_name_raw, away_id, matchup.get("tbdTeam2", False)
+        away_name_raw, away_id, bool(matchup.get("tbdTeam2", False)), raw_away
     )
-    home_logo = _team_logo(home_id)
-    away_logo = _team_logo(away_id)
+
+    # FotMob assigns numeric IDs to some bracket placeholders. The semantic
+    # placeholder check must happen before _team_logo so those IDs never
+    # trigger HTTP requests for nonexistent team logos.
+    home_logo = None if home_placeholder else _team_logo(home_id)
+    away_logo = None if away_placeholder else _team_logo(away_id)
 
     score, home_penalty, away_penalty = _knockout_match_score(matchup)
     # Keep the score/shootout block clearly separated from the team-name area.
