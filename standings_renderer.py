@@ -470,8 +470,20 @@ def _render_grouped_combined(data: dict, output: Path) -> None:
                 team_name = _team_name({
                     "id": team_id, "name": row.get("teamName") or "—"
                 })
-                _draw_text(draw, (logo_x - 10, row_y + row_h / 2),
-                           team_name, _font(24, True), TEXT, "rm")
+                team_text_right = logo_x - 10
+                team_text_left = x + 76
+                team_font, team_direction, team_language = _fit_group_team_name(
+                    draw, team_name, max(40, team_text_right - team_text_left)
+                )
+                team_kwargs = {
+                    "anchor": "rm", "fill": TEXT, "direction": team_direction
+                }
+                if team_language:
+                    team_kwargs["language"] = team_language
+                draw.text(
+                    (team_text_right, row_y + row_h / 2),
+                    team_name, font=team_font, **team_kwargs
+                )
 
                 gd = row.get("goalDiff")
                 gd_text = "—" if gd is None else _persian_digits(gd)
@@ -511,8 +523,20 @@ def _render_grouped_combined(data: dict, output: Path) -> None:
                 team_name = _team_name({
                     "id": team_id, "name": row.get("teamName") or "—"
                 })
-                _draw_text(draw, (cx - 8, yy), team_name,
-                           _font(23, True), TEXT, "rm")
+                team_text_right = cx - 8
+                team_text_left = cx - col_w / 2 + 58
+                team_font, team_direction, team_language = _fit_group_team_name(
+                    draw, team_name, max(40, team_text_right - team_text_left)
+                )
+                team_kwargs = {
+                    "anchor": "rm", "fill": TEXT, "direction": team_direction
+                }
+                if team_language:
+                    team_kwargs["language"] = team_language
+                draw.text(
+                    (team_text_right, yy),
+                    team_name, font=team_font, **team_kwargs
+                )
                 points = row.get("points")
                 if points is not None:
                     _draw_text(draw, (cx - col_w / 2 + 86, yy),
@@ -634,6 +658,23 @@ def _knockout_stage_font_size(stage: str) -> int:
     return 31 if len(stage) <= 16 else 27
 
 
+def _fit_group_team_name(draw, name: str, max_width: float):
+    """Fit a group-table team name inside its measured cell without clipping."""
+    is_persian = _knockout_name_is_persian(name)
+    direction = "rtl" if is_persian else "ltr"
+    language = "fa" if is_persian else None
+    for size in (24, 23, 22, 21, 20, 19, 18, 17, 16):
+        font = _font(size, True) if is_persian else _latin_font(size, True)
+        kwargs = {"font": font, "direction": direction}
+        if language:
+            kwargs["language"] = language
+        bbox = draw.textbbox((0, 0), name, **kwargs)
+        if bbox[2] - bbox[0] <= max_width:
+            return font, direction, language
+    font = _font(16, True) if is_persian else _latin_font(16, True)
+    return font, direction, language
+
+
 def _knockout_match_score(matchup: dict) -> tuple[str, str | None, str | None]:
     """Return each team's normal score plus its shootout score."""
     home = matchup.get("homeScore")
@@ -671,7 +712,7 @@ def _fit_knockout_name(draw, name: str, right: float, left: float):
     is_persian = _knockout_name_is_persian(name)
     direction = "rtl" if is_persian else "ltr"
     language = "fa" if is_persian else None
-    for size in (22, 21, 20, 19, 18, 17):
+    for size in (22, 21, 20, 19, 18, 17, 16, 15, 14):
         font = _font(size, True) if is_persian else _latin_font(size, True)
         bbox_kwargs = {
             "font": font,
@@ -683,7 +724,7 @@ def _fit_knockout_name(draw, name: str, right: float, left: float):
         bbox = draw.textbbox((0, 0), name, **bbox_kwargs)
         if bbox[2] - bbox[0] <= max(30, right - left):
             return font, direction, language
-    font = _font(17, True) if is_persian else _latin_font(17, True)
+    font = _font(14, True) if is_persian else _latin_font(14, True)
     return font, direction, language
 
 
