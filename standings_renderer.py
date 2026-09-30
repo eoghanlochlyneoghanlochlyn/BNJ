@@ -1025,7 +1025,8 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     gap = 22
     card_h = 140
     usable_width = WIDTH - 2 * side - gap * (cols - 1)
-    # Keep every knockout column inside the 1600px canvas; a fixed 245px minimum overflowed on long brackets.\n    card_w = max(185, min(330, usable_width // cols))
+    # Keep every knockout column inside the 1600px canvas; a fixed 245px minimum overflowed on long brackets.
+    card_w = max(185, min(330, usable_width // cols))
 
     # Build a real tournament-tree geometry. The first round is spread out;
     # every later round is positioned at the midpoint of the source matches
