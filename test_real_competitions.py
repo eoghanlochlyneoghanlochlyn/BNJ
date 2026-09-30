@@ -8,6 +8,8 @@ import requests
 
 from config import COMPETITION_IDS, MAJOR_LEAGUE_IDS
 from fotmob import FOTMOB_BASE_URL, HEADERS
+from pathlib import Path
+
 from standings import (
     _extract_competition,
     _extract_knockout,
@@ -15,6 +17,10 @@ from standings import (
     _extract_tables,
     has_knockout,
 )
+from standings_renderer import render_knockout_standings
+
+
+BRACKET_OUTPUT_DIR = Path("output/real_competitions")
 
 
 DEFAULT_COMPETITIONS = {
@@ -101,6 +107,35 @@ def _print_knockout(rounds: list[dict]) -> None:
             )
 
 
+
+def _render_real_bracket(competition_id: str, competition_name: str, season: str, rounds: list[dict]) -> None:
+    BRACKET_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    data = {
+        "competitionId": str(competition_id),
+        "competitionName": competition_name,
+        "season": season,
+        "knockoutRounds": rounds,
+    }
+    output = BRACKET_OUTPUT_DIR / f"{competition_id}_knockout.png"
+    render_knockout_standings(data, None, output)
+
+    if not output.exists() or output.stat().st_size < 1000:
+        raise RuntimeError(f"Invalid bracket image: {output}")
+
+    from PIL import Image
+
+    with Image.open(output) as image:
+        if image.width != 1600:
+            raise RuntimeError(
+                f"Unexpected bracket width for {competition_id}: {image.width}"
+            )
+        if image.height < 1500:
+            raise RuntimeError(
+                f"Bracket image is suspiciously short for {competition_id}: {image.height}"
+            )
+
+    print(f"  Rendered bracket: {output} ({output.stat().st_size} bytes)")
+
 def inspect_competition(competition_id: str, dump_raw: bool = False) -> None:
     print("=" * 88)
     print(f"COMPETITION ID: {competition_id}")
@@ -125,6 +160,14 @@ def inspect_competition(competition_id: str, dump_raw: bool = False) -> None:
     _print_tables(tables)
     print(f"  has_knockout: {has_knockout({'knockoutRounds': rounds})}")
     _print_knockout(rounds)
+
+    if rounds:
+        _render_real_bracket(
+            str(competition_id),
+            name or str(competition_id),
+            season or "unknown",
+            rounds,
+        )
 
     if dump_raw:
         print("  RAW JSON:")
