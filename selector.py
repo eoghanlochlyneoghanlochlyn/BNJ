@@ -9,13 +9,49 @@ def _team_id(value: object) -> str:
     return ""
 
 
+def _candidate_competition_ids(match: dict) -> set[str]:
+    """Collect every numeric competition identity extracted from FotMob."""
+    ids: set[str] = set()
+
+    for key in (
+        "leagueId",
+        "competitionId",
+        "tournamentId",
+        "primaryLeagueId",
+        "primaryId",
+        "parentLeagueId",
+    ):
+        value = match.get(key)
+        if value not in (None, ""):
+            ids.add(str(value))
+
+    raw_league = match.get("rawLeague") or {}
+    if isinstance(raw_league, dict):
+        for key in (
+            "id",
+            "leagueId",
+            "competitionId",
+            "tournamentId",
+            "primaryId",
+            "parentLeagueId",
+        ):
+            value = raw_league.get(key)
+            if value not in (None, ""):
+                ids.add(str(value))
+
+    return ids
+
+
 def _match_competition_id(match: dict) -> str:
-    return str(
-        match.get("leagueId")
-        or match.get("competitionId")
-        or match.get("tournamentId")
-        or ""
-    )
+    """Return the configured competition ID when any extracted ID matches."""
+    candidates = _candidate_competition_ids(match)
+    configured = COMPETITION_IDS | MAJOR_LEAGUE_IDS
+
+    for competition_id in configured:
+        if competition_id in candidates:
+            return competition_id
+
+    return next(iter(candidates), "")
 
 
 def _has_priority_team(match: dict) -> bool:
@@ -27,13 +63,13 @@ def _has_priority_team(match: dict) -> bool:
 
 
 def qualifies(match: dict) -> bool:
-    # Selection is strictly numeric: competition ID or priority team ID.
-    competition_id = _match_competition_id(match)
+    # FotMob may expose a concrete group/subcompetition ID (e.g. 920743)
+    # while primaryId identifies the actual competition (e.g. 9806).
+    # The final decision is based on whether ANY extracted numeric identity
+    # belongs to our configured competition set.
+    competition_ids = _candidate_competition_ids(match)
 
-    if competition_id in COMPETITION_IDS:
-        return True
-
-    if competition_id in MAJOR_LEAGUE_IDS:
+    if competition_ids & (COMPETITION_IDS | MAJOR_LEAGUE_IDS):
         return True
 
     return _has_priority_team(match)
