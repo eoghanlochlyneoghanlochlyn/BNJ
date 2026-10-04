@@ -166,17 +166,13 @@ def _send_overall_table(
     return 1
 
 
-def _send_knockout(
+def _send_knockout_stage(
     state: dict,
     data: dict,
     competition_id: str,
     output_dir: Path,
+    stage: dict,
 ) -> int:
-    rounds = data.get("knockoutRounds") or []
-    stage = current_knockout_stage(rounds)
-    if not stage:
-        return 0
-
     status = knockout_stage_status(stage)
     if status == "not_ready":
         return 0
@@ -184,9 +180,9 @@ def _send_knockout(
     label = str(stage.get("stage") or "مرحله حذفی")
     season = str(data.get("season") or "فصل جاری")
 
-    # Stage + status are deliberately separate identities. This means
-    # teams_known, in_progress and completed can each be published once,
-    # while unchanged data inside one status is suppressed.
+    # Stage + status are deliberately separate identities. A stage can move
+    # through teams_known -> in_progress -> completed, and each meaningful
+    # state is published at most once.
     key = f"knockout:{competition_id}:{season}:{label}:{status}"
     fingerprint = knockout_fingerprint(data, stage, status)
 
@@ -220,7 +216,74 @@ def _send_knockout(
     return 1
 
 
-def publish(day: dt.date) -> int:
+def _send_knockout(
+    state: dict,
+    data: dict,
+    competition_id: str,
+    output_dir: Path,
+) -> int:
+    stage = current_knockout_stage(data.get("knockoutRounds") or [])
+    if not stage:
+        return 0
+    return _send_knockout_stage(state, data, competition_id, output_dir, stage)
+
+
+def _send_all_ready_knockout_stages(
+    state: dict,
+    data: dict,
+    competition_id: str,
+    output_dir: Path,
+) -> int:
+    """Manual competition inspection: publish every stage whose teams are known.
+
+    Future stages are intentionally allowed here. This is different from the
+    automatic publisher, which only publishes the current active stage.
+    Stages with unknown/TBD participants are skipped.
+    """
+    rounds = data.get("knockoutRounds") or []
+    ordered = sorted(
+        [r for r in rounds if isinstance(r, dict)],
+        key=publisher_stage_key,
+    )
+    sent = 0
+    for stage in ordered:
+        sent += _send_knockout_stage(
+            state, data, competition_id, output_dir, stage
+        )
+    return sent
+
+
+def publish(day: dt.date, competition_id: str | None = None) -> int:
+    # Explicit competition mode is for a manual/full snapshot. It does not
+    # depend on today's matches and may inspect future knockout stages whose
+    # participants are already known.
+    if competition_id:
+        competition_id = str(competition_id)
+        state = load_state()
+        data = fetch_standings(competition_id)
+        output_dir = Path("output/standings") / competition_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        sent = 0
+        if data.get("tables"):
+            if is_grouped_standings(data):
+                sent += _send_grouped_tables(state, data, competition_id, output_dir)
+                sent += _send_overall_table(state, data, competition_id, output_dir)
+            else:
+                sent += _send_overall_table(state, data, competition_id, output_dir)
+
+        if has_knockout(data):
+            sent += _send_all_ready_knockout_stages(
+                state, data, competition_id, output_dir
+            )
+
+        save_state(state)
+        print(
+            f"[PUBLISH] Manual competition {competition_id}: "
+            f"sent {sent} report(s)."
+        )
+        return sent
+
     matches = _todays_matches(day)
     if not matches:
         print(f"[PUBLISH] No matches on {day.isoformat()}; nothing to publish.")
@@ -266,9 +329,13 @@ def publish(day: dt.date) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--date")
+    parser.add_argument(
+        "--competition-id",
+        help="Manually publish all currently known tables and knockout stages for one competition.",
+    )
     args = parser.parse_args()
     day = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(IRAN_TIMEZONE).date()
-    publish(day)
+    publish(day, competition_id=args.competition_id)
 
 
 if __name__ == "__main__":
