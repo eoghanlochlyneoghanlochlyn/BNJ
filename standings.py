@@ -1063,14 +1063,17 @@ def _normalize_fixture_match(match: dict) -> dict:
 
 
 def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
-    """Build the UEFA 2026 playoff tree from fixtures plus the official path draw.
+    """Build the UEFA 2026 playoff tree from the draw paths and live fixtures.
 
-    FotMob does not expose the bracket tree reliably, so the path relationship
-    is defined here, while scores/results are read from FotMob fixtures.
+    The draw is fixed, but match results are never hard-coded.  Before a match
+    is played its score is left unknown; after it is played, the score is read
+    from FotMob.  Finals are connected to the two semi-final winners in the
+    drawn path.
     """
     params = {"id": "10195"}
     if season:
         params["season"] = season
+
     try:
         response = requests.get(
             f"{FOTMOB_BASE_URL}/api/data/fixtures",
@@ -1082,7 +1085,7 @@ def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
         payload = response.json()
     except (requests.RequestException, ValueError) as error:
         print(f"[STANDINGS] 10195: UEFA playoff fixtures unavailable: {error}")
-        return []
+        payload = {}
 
     fixtures = _extract_fixture_matchups(payload)
     by_pair: dict[frozenset[str], dict] = {}
@@ -1094,8 +1097,6 @@ def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
         if home_id and away_id:
             by_pair[frozenset((home_id, away_id))] = fixture
 
-    # Official 2026 draw: two semi-finals form each path, and their winners
-    # meet in that path's final. The relationships are fixed before matches.
     team_ids = {
         "ایتالیا": "8204",
         "ایرلند شمالی": "10259",
@@ -1121,45 +1122,28 @@ def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
         [("دانمارک", "مقدونیه شمالی"), ("چک", "ایرلند")],
     ]
 
-    def normalize(fixture: dict) -> dict:
-        return _normalize_fixture_match(fixture)
+    def make_placeholder(home_name: str, away_name: str) -> dict:
+        return {
+            "home": {"id": team_ids[home_name], "name": home_name},
+            "away": {"id": team_ids[away_name], "name": away_name},
+            "homeScore": None,
+            "awayScore": None,
+            "winner": "",
+            "bestOf": 1,
+            "tbdTeam1": False,
+            "tbdTeam2": False,
+            "matches": [],
+            "aggregatedResult": {},
+            "aggregatedWinner": None,
+            "aggregatedLoser": None,
+            "penaltyScore": None,
+            "raw": {"source": "draw-placeholder", "competitionId": "10195"},
+        }
 
-    semifinals: list[dict] = []
-    winners_by_path: list[list[dict]] = []
-    for path in paths:
-        path_matches: list[dict] = []
-        path_winners: list[dict] = []
-        for home_name, away_name in path:
-            key = frozenset((team_ids[home_name], team_ids[away_name]))
-            fixture = by_pair.get(key)
-            if fixture is None:
-                print(f"[STANDINGS] 10195: missing fixture {home_name} vs {away_name}")
-                return []
-            match = normalize(fixture)
-            match_id = match.get("matches", [{}])[0].get("matchId")
-            hs, aw, _ = _fetch_match_score(
-                match_id,
-                match.get("home", {}).get("id"),
-                match.get("away", {}).get("id"),
-            )
-            if hs is not None and aw is not None:
-                match["homeScore"] = hs
-                match["awayScore"] = aw
-            else:
-                hs, aw, penalty = _fetch_match_result(
-                    match_id,
-                    match.get("home", {}).get("id"),
-                    match.get("away", {}).get("id"),
-                )
-                if hs is not None and aw is not None:
-                    match["homeScore"] = hs
-                    match["awayScore"] = aw
-                if penalty is not None:
-                    match["penaltyScore"] = penalty
-            path_matches.append(match)
-            path_winners.append(match)
-        winners_by_path.append(path_winners)
-        semifinals.extend(path_matches)
+    def normalize_fixture(fixture: dict | None, home_name: str, away_name: str) -> dict:
+        if fixture is None:
+            return make_placeholder(home_name, away_name)
+        return _normalize_fixture_match(fixture)
 
     def winner_name(match: dict) -> tuple[str, str] | None:
         home_score = match.get("homeScore")
@@ -1181,57 +1165,48 @@ def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
                     return str(match["away"]["name"]), str(match["away"]["id"])
         return None
 
+    semifinals: list[dict] = []
+    path_matches: list[list[dict]] = []
+    for path in paths:
+        current_path: list[dict] = []
+        for home_name, away_name in path:
+            key = frozenset((team_ids[home_name], team_ids[away_name]))
+            match = normalize_fixture(by_pair.get(key), home_name, away_name)
+            current_path.append(match)
+            semifinals.append(match)
+        path_matches.append(current_path)
+
     finals: list[dict] = []
-    for path_index, path_matches in enumerate(winners_by_path, 1):
-        winners = [winner_name(match) for match in path_matches]
-        final_fixture = None
-        if all(w is not None for w in winners):
-            ids = [w[1] for w in winners]
-            final_fixture = by_pair.get(frozenset(ids))
-        if final_fixture is not None:
-            final_match = normalize(final_fixture)
-            match_id = final_match.get("matches", [{}])[0].get("matchId")
-            hs, aw, _ = _fetch_match_score(
-                match_id,
-                final_match.get("home", {}).get("id"),
-                final_match.get("away", {}).get("id"),
-            )
-            if hs is not None and aw is not None:
-                final_match["homeScore"] = hs
-                final_match["awayScore"] = aw
+    for path_index, matches in enumerate(path_matches, 1):
+        winners = [winner_name(match) for match in matches]
+
+        if all(winner is not None for winner in winners):
+            winner_a = winners[0]
+            winner_b = winners[1]
+            assert winner_a is not None and winner_b is not None
+            final_key = frozenset((winner_a[1], winner_b[1]))
+            final_fixture = by_pair.get(final_key)
+
+            if final_fixture is not None:
+                final_match = _normalize_fixture_match(final_fixture)
             else:
-                hs, aw, penalty = _fetch_match_result(
-                    match_id,
-                    final_match.get("home", {}).get("id"),
-                    final_match.get("away", {}).get("id"),
-                )
-                if hs is not None and aw is not None:
-                    final_match["homeScore"] = hs
-                    final_match["awayScore"] = aw
-                if penalty is not None:
-                    final_match["penaltyScore"] = penalty
-        elif all(w is not None for w in winners):
-            home_name, home_id = winners[0]
-            away_name, away_id = winners[1]
-            final_match = {
-                "home": {"id": home_id, "name": home_name},
-                "away": {"id": away_id, "name": away_name},
-                "homeScore": None,
-                "awayScore": None,
-                "winner": "",
-                "bestOf": 1,
-                "tbdTeam1": False,
-                "tbdTeam2": False,
-                "matches": [],
-                "aggregatedResult": {},
-                "aggregatedWinner": None,
-                "aggregatedLoser": None,
-                "penaltyScore": None,
-                "raw": {"source": "derived-path", "path": path_index},
-            }
+                final_match = {
+                    "home": {"id": winner_a[1], "name": winner_a[0]},
+                    "away": {"id": winner_b[1], "name": winner_b[0]},
+                    "homeScore": None,
+                    "awayScore": None,
+                    "winner": "",
+                    "bestOf": 1,
+                    "tbdTeam1": False,
+                    "tbdTeam2": False,
+                    "matches": [],
+                    "aggregatedResult": {},
+                    "aggregatedWinner": None,
+                    "aggregatedLoser": None,
+                    "penaltyScore": None,
+                    "raw": {"source": "derived-path", "path": path_index},
+                }
         else:
-            # Results are not complete yet: keep the path relationship visible
-            # with placeholders instead of inventing a final pairing.
             final_match = {
                 "home": {"id": "", "name": f"برنده بازی {path_index * 2 - 1}"},
                 "away": {"id": "", "name": f"برنده بازی {path_index * 2}"},
@@ -2061,15 +2036,14 @@ def fetch_standings(competition_id: str, season: str | None = None) -> dict:
         raise RuntimeError(f"FotMob standings response is not an object: {competition_id}")
 
     tables = _extract_tables(data)
-    knockout_rounds = _extract_knockout(data)
-    if competition_id == "10195" and not knockout_rounds:
+    if competition_id == "10195":
+        # The draw paths are fixed, but results must always come from FotMob.
+        # This keeps the bracket correct even before any match has been played.
         knockout_rounds = _fetch_uefa_world_cup_playoffs(season)
-        if knockout_rounds:
-            print("[STANDINGS] 10195: UEFA playoff fallback -> semifinals + finals")
-        else:
-            knockout_rounds = _manual_uefa_world_cup_playoffs()
-            print("[STANDINGS] 10195: manual UEFA playoff bracket -> semifinals + finals")
-    _enrich_knockout_penalties(knockout_rounds)
+        print("[STANDINGS] 10195: UEFA playoff bracket -> draw paths + live FotMob results")
+    else:
+        knockout_rounds = _extract_knockout(data)
+        _enrich_knockout_penalties(knockout_rounds)
 
     # Some super cups and one-off competitions have no standings or bracket
     # in FotMob at all. If the competition has exactly one fixture, represent
