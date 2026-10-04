@@ -871,20 +871,47 @@ def _single_match_knockout(matchup: dict) -> list[dict]:
 
 
 def _extract_fixture_matchups(data: Any) -> list[dict]:
-    """Recursively collect unique fixture-like matchups from a FotMob payload."""
+    """Collect FotMob fixtures while tolerating the different fixture schemas."""
     found: list[dict] = []
     seen: set[str] = set()
 
+    def first_dict(node: dict, keys: tuple[str, ...]) -> dict | None:
+        for key in keys:
+            value = node.get(key)
+            if isinstance(value, dict):
+                return value
+        return None
+
+    def match_id_from(node: dict) -> str:
+        for key in ("matchId", "match_id", "fixtureId", "fixture_id"):
+            value = node.get(key)
+            if value is not None:
+                return str(value)
+        nested = node.get("match")
+        if isinstance(nested, dict):
+            for key in ("matchId", "match_id", "id"):
+                value = nested.get(key)
+                if value is not None:
+                    return str(value)
+        value = node.get("id")
+        return str(value) if value is not None else ""
+
     def walk(node: Any) -> None:
         if isinstance(node, dict):
-            home = node.get("home") if isinstance(node.get("home"), dict) else None
-            away = node.get("away") if isinstance(node.get("away"), dict) else None
-            match_id = node.get("matchId") or node.get("match_id") or node.get("id")
-            if home and away and match_id is not None:
-                key = str(match_id)
-                if key not in seen:
-                    seen.add(key)
+            home = first_dict(node, ("home", "homeTeam", "home_team"))
+            away = first_dict(node, ("away", "awayTeam", "away_team"))
+            if home and away:
+                match_id = match_id_from(node)
+                if not match_id:
+                    nested = node.get("match")
+                    if isinstance(nested, dict):
+                        match_id = match_id_from(nested)
+                if match_id and match_id not in seen:
+                    seen.add(match_id)
                     item = dict(node)
+                    item["_fixture_home"] = home
+                    item["_fixture_away"] = away
+                    item["_fixture_match_id"] = match_id
                     item["_fixture_stage"] = (
                         node.get("stage")
                         or node.get("roundName")
@@ -903,6 +930,7 @@ def _extract_fixture_matchups(data: Any) -> list[dict]:
 
     walk(data)
     return found
+
 
 
 def _fixture_stage_text(match: dict) -> str:
@@ -965,17 +993,17 @@ def _fixture_penalty_score(match: dict) -> dict | None:
 
 
 def _normalize_fixture_match(match: dict) -> dict:
-    home = match.get("home") or {}
-    away = match.get("away") or {}
-    match_id = match.get("matchId") or match.get("match_id") or match.get("id")
+    home = match.get("_fixture_home") or match.get("home") or match.get("homeTeam") or {}
+    away = match.get("_fixture_away") or match.get("away") or match.get("awayTeam") or {}
+    match_id = match.get("_fixture_match_id") or match.get("matchId") or match.get("match_id") or match.get("id")
     return {
         "home": {
             "id": str(home.get("id") or home.get("teamId") or ""),
-            "name": str(home.get("name") or home.get("teamName") or "نامشخص"),
+            "name": str(home.get("name") or home.get("teamName") or ""),
         },
         "away": {
             "id": str(away.get("id") or away.get("teamId") or ""),
-            "name": str(away.get("name") or away.get("teamName") or "نامشخص"),
+            "name": str(away.get("name") or away.get("teamName") or ""),
         },
         "homeScore": _fixture_score_value(home, match, "home"),
         "awayScore": _fixture_score_value(away, match, "away"),
@@ -990,6 +1018,9 @@ def _normalize_fixture_match(match: dict) -> dict:
         "penaltyScore": _fixture_penalty_score(match),
         "raw": match,
     }
+
+
+
 
 
 def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
