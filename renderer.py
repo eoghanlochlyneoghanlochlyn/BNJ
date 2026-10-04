@@ -165,6 +165,8 @@ def _load_competition_fa() -> dict[str, str]:
     mapping["9809"] = "لیگ ملت‌های اروپا D"
     mapping["207"] = "سوپرجام فرانسه"
     mapping["935524"] = "سوپرجام فرانسه"
+    mapping["10195"] = "انتخابی جام جهانی اروپا"
+    mapping["10199"] = "انتخابی جام جهانی در آمریکای جنوبی"
 
     _competition_fa_cache = mapping
     return mapping
