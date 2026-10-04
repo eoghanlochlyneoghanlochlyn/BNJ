@@ -1005,9 +1005,25 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
         # A stage argument identifies the current stage, but the poster should
         # still contain every published earlier stage plus all future columns.
         source_rounds = source_rounds[:]
-    rounds = _ensure_full_knockout_bracket(
-        [item for item in source_rounds if isinstance(item, dict) and item.get("matchups")]
-    )
+    valid_rounds = [
+        item for item in source_rounds
+        if isinstance(item, dict) and item.get("matchups")
+    ]
+
+    # Domestic cups are intentionally represented from the Round of 16 onward.
+    # FotMob can expose earlier qualifying/entry rounds (especially the FA Cup),
+    # but those rounds are not part of the poster scope and can contain dozens
+    # of matches. Keeping them would make the first bracket column enormous.
+    domestic_cup_ids = {"132", "133", "141", "138", "134", "209"}
+    if str(data.get("competitionId") or "") in domestic_cup_ids:
+        knockout_from_r16 = [
+            item for item in valid_rounds
+            if _knockout_stage_key(item) >= 40
+        ]
+        if knockout_from_r16:
+            valid_rounds = knockout_from_r16
+
+    rounds = _ensure_full_knockout_bracket(valid_rounds)
     if not rounds:
         raise ValueError("Cannot render knockout standings without matchups.")
 
