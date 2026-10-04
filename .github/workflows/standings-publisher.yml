@@ -9,6 +9,10 @@ on:
         description: "Iran calendar date YYYY-MM-DD (optional)"
         required: false
         type: string
+      competition_id:
+        description: "Numeric FotMob competition ID for a full manual snapshot (optional)"
+        required: false
+        type: string
 
 concurrency:
   group: bnj-publication
@@ -37,7 +41,9 @@ jobs:
           TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
           TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
         run: |
-          if [ -n "${{ inputs.date }}" ]; then
+          if [ -n "${{ inputs.competition_id }}" ]; then
+            python publish_standings.py --competition-id "${{ inputs.competition_id }}"
+          elif [ -n "${{ inputs.date }}" ]; then
             python publish_standings.py --date "${{ inputs.date }}"
           else
             python publish_standings.py
