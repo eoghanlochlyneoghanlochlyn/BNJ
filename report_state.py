@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import datetime as dt
 from pathlib import Path
 from typing import Any
 
@@ -92,5 +93,6 @@ def mark_report_sent(
             "competition_id": str(competition_id),
             "season": season,
             "stage": stage,
+            "sent_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         },
     )
