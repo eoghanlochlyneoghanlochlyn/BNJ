@@ -1,0 +1,50 @@
+name: BNJ Standings and Knockout Publisher
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Iran calendar date YYYY-MM-DD (optional)"
+        required: false
+        type: string
+
+concurrency:
+  group: bnj-publication
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install fonts and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core
+          pip install -r requirements.txt
+      - name: Publish changed standings and knockout states
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            python publish_standings.py --date "${{ inputs.date }}"
+          else
+            python publish_standings.py
+          fi
+      - name: Persist publication state
+        run: |
+          if git diff --quiet -- report_state.json; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add report_state.json
+          git commit -m "Persist standings publication state"
+          git pull --rebase origin main
+          git push
