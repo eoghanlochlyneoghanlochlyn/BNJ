@@ -1070,9 +1070,10 @@ def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
     from FotMob.  Finals are connected to the two semi-final winners in the
     drawn path.
     """
+    # The fixtures endpoint for this competition is more reliable without
+    # passing the display season string (FotMob may otherwise return no
+    # playoff fixtures). We identify the tournament by competition ID.
     params = {"id": "10195"}
-    if season:
-        params["season"] = season
 
     try:
         response = requests.get(
@@ -1143,7 +1144,26 @@ def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
     def normalize_fixture(fixture: dict | None, home_name: str, away_name: str) -> dict:
         if fixture is None:
             return make_placeholder(home_name, away_name)
-        return _normalize_fixture_match(fixture)
+
+        match = _normalize_fixture_match(fixture)
+        match_id = (match.get("matches") or [{}])[0].get("matchId")
+
+        # Scores are never supplied by this bracket code. Read the current
+        # result from FotMob's match-details endpoint, so an upcoming match
+        # stays scoreless while a finished match gets its actual result.
+        home_score, away_score, penalty = _fetch_match_result(
+            match_id,
+            match.get("homeTeamId"),
+            match.get("awayTeamId"),
+        )
+        if home_score is not None:
+            match["homeScore"] = home_score
+        if away_score is not None:
+            match["awayScore"] = away_score
+        if penalty is not None:
+            match["penaltyScore"] = penalty
+
+        return match
 
     def winner_name(match: dict) -> tuple[str, str] | None:
         home_score = match.get("homeScore")
