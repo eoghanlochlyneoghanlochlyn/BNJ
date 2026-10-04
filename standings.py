@@ -1392,14 +1392,21 @@ def fetch_standings(competition_id: str, season: str | None = None) -> dict:
 
     tables = _extract_tables(data)
     knockout_rounds = _extract_knockout(data)
-    if competition_id == "10195" and not knockout_rounds:
+
+    # UEFA's 2026 World Cup European play-offs have a fixed four-path draw,
+    # but FotMob's league payload can expose the matches with unreliable
+    # score/penalty orientation. Use the known 2026 bracket directly so the
+    # displayed teams, logos and shoot-out scores stay consistent.
+    if competition_id == "10195":
+        knockout_rounds = _manual_uefa_world_cup_playoffs()
+        print("[STANDINGS] 10195: manual UEFA playoff bracket -> semifinals + finals")
+    elif not knockout_rounds:
         knockout_rounds = _fetch_uefa_world_cup_playoffs(season)
-        if knockout_rounds:
-            print("[STANDINGS] 10195: UEFA playoff fallback -> semifinals + finals")
-        else:
-            knockout_rounds = _manual_uefa_world_cup_playoffs()
-            print("[STANDINGS] 10195: manual UEFA playoff bracket -> semifinals + finals")
-    _enrich_knockout_penalties(knockout_rounds)
+
+    # Manual 10195 data already contains the final score and penalty order;
+    # do not let the generic enrichment step overwrite it with bad fixture data.
+    if competition_id != "10195":
+        _enrich_knockout_penalties(knockout_rounds)
 
     # Some super cups and one-off competitions have no standings or bracket
     # in FotMob at all. If the competition has exactly one fixture, represent
