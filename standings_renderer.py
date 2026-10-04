@@ -1040,10 +1040,22 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     cols = len(rounds)
     side = 42
     gap = 22
-    card_h = 140
+    first_count = max(1, len(rounds[0].get("matchups") or []))
+
+    # Give shorter brackets progressively larger matchup cards. A normal
+    # Round-of-16 bracket keeps the existing compact size; when a competition
+    # starts at the quarterfinals, semifinals, or is a single final, there are
+    # fewer cards to fit, so both dimensions can grow without crowding the
+    # poster.
+    size_by_first_round = {
+        8: (330, 140),
+        4: (360, 170),
+        2: (400, 195),
+        1: (460, 225),
+    }
+    max_card_w, card_h = size_by_first_round.get(first_count, (330, 140))
     usable_width = WIDTH - 2 * side - gap * (cols - 1)
-    # Keep every knockout column inside the 1600px canvas; a fixed 245px minimum overflowed on long brackets.
-    card_w = max(185, min(330, usable_width // cols))
+    card_w = max(185, min(max_card_w, usable_width // cols))
 
     # Center the complete bracket as a single unit. When the competition has
     # fewer knockout stages (for example QF -> SF -> Final), the unused
@@ -1052,7 +1064,6 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     bracket_width = cols * card_w + gap * (cols - 1)
     side = max(42, (WIDTH - bracket_width) / 2)
 
-    first_count = max(1, len(rounds[0].get("matchups") or []))
     body_top = HEADER_H + 70
     bottom_margin = 70
     top_center = body_top + card_h / 2
