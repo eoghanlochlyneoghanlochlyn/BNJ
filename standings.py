@@ -895,6 +895,25 @@ def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
 
 def _manual_uefa_world_cup_playoffs() -> list[dict]:
     """Static 2026 UEFA playoff bracket; FotMob does not expose the bracket tree."""
+    team_ids = {
+        "ایتالیا": "8204",
+        "ایرلند شمالی": "10259",
+        "ولز": "5790",
+        "بوسنی و هرزگوین": "10106",
+        "اوکراین": "6718",
+        "سوئد": "8520",
+        "لهستان": "8568",
+        "آلبانی": "10024",
+        "ترکیه": "6595",
+        "رومانی": "9730",
+        "اسلواکی": "8497",
+        "کوزوو": "430156",
+        "دانمارک": "8238",
+        "مقدونیه شمالی": "8260",
+        "چک": "8496",
+        "ایرلند": "5791",
+    }
+
     def match(
         home: str,
         away: str,
@@ -908,8 +927,8 @@ def _manual_uefa_world_cup_playoffs() -> list[dict]:
             penalty = {"home": home_penalty, "away": away_penalty}
         return {
             "number": 0,
-            "homeTeamId": "",
-            "awayTeamId": "",
+            "homeTeamId": team_ids[home],
+            "awayTeamId": team_ids[away],
             "homeTeam": home,
             "awayTeam": away,
             "homeScore": home_score,
