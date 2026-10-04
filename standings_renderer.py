@@ -1029,6 +1029,13 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     # Keep every knockout column inside the 1600px canvas; a fixed 245px minimum overflowed on long brackets.
     card_w = max(185, min(330, usable_width // cols))
 
+    # Center the complete bracket as a single unit. When the competition has
+    # fewer knockout stages (for example QF -> SF -> Final), the unused
+    # horizontal space is therefore split equally between the left and right
+    # sides instead of leaving the first round flush against the left edge.
+    bracket_width = cols * card_w + gap * (cols - 1)
+    side = max(42, (WIDTH - bracket_width) / 2)
+
     first_count = max(1, len(rounds[0].get("matchups") or []))
     body_top = HEADER_H + 70
     bottom_margin = 70
