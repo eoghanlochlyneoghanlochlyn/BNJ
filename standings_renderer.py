@@ -129,8 +129,8 @@ def _group_display_name(value: Any) -> str:
     # FotMob may return variants such as "Group E", "Grp E",
     # "Grp. E", or "Grp . E". Normalize all of them to Persian so the
     # renderer never has to display the English group abbreviation.
-    match = re.fullmatch(
-        r"(?:Group|Grp)\s*\.?\s*([A-Za-z0-9]+)",
+    match = re.search(
+        r"\b(?:Group|Grp)\s*\.?\s*([A-Za-z0-9]+)",
         text,
         re.IGNORECASE,
     )
