@@ -7,7 +7,7 @@ from typing import Any
 
 import requests
 
-from config import IRAN_TIMEZONE, MAJOR_LEAGUE_IDS
+from config import CHART_EXCLUDED_COMPETITION_IDS, IRAN_TIMEZONE, MAJOR_LEAGUE_IDS
 from fotmob import FOTMOB_BASE_URL, HEADERS
 
 
@@ -765,7 +765,13 @@ def _single_match_knockout(matchup: dict) -> list[dict]:
 
 
 def fetch_standings(competition_id: str, season: str | None = None) -> dict:
-    params = {"id": str(competition_id)}
+    competition_id = str(competition_id)
+    if competition_id in CHART_EXCLUDED_COMPETITION_IDS:
+        raise RuntimeError(
+            f"Competition {competition_id} is intentionally excluded from standings/knockout chart rendering."
+        )
+
+    params = {"id": competition_id}
     if season:
         params["season"] = season
 
