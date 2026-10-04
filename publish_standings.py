@@ -10,7 +10,7 @@ from report_state import load_state, save_state, mark_report_sent
 from publisher import (
     current_knockout_stage,
     knockout_fingerprint,
-    knockout_ready,
+    knockout_stage_status,
     table_fingerprint,
     _stage_key as publisher_stage_key,
     register_if_changed,
@@ -34,13 +34,25 @@ def _finished(match: dict) -> bool:
     for key in ("finished", "isFinished", "completed"):
         if status.get(key) is True:
             return True
-    text = str(status.get("reason") or status.get("name") or status.get("shortName") or status.get("type") or "").casefold()
-    return text in {"ft", "aet", "pen", "finished", "full time", "after penalties", "after extra time"}
+    text = str(
+        status.get("reason")
+        or status.get("name")
+        or status.get("shortName")
+        or status.get("type")
+        or ""
+    ).casefold()
+    return text in {
+        "ft",
+        "aet",
+        "pen",
+        "finished",
+        "full time",
+        "after penalties",
+        "after extra time",
+    }
 
 
 def _todays_matches(day: dt.date) -> list[dict]:
-    # The existing 09:00→09:00 API window is combined for adjacent days so
-    # that the publication trigger covers the complete Iran calendar day.
     matches = fetch_matches_for_iran_date(day - dt.timedelta(days=1))
     matches += fetch_matches_for_iran_date(day)
     unique = {}
@@ -88,13 +100,25 @@ def _send_grouped_tables(
         output = output_dir / f"{competition_id}_{index}_{safe}.png"
         render_group_standings(data, table, dt.date.today(), output)
         send_photo(output, f"📊 جدول {data.get('competitionName') or competition_id} | {group}")
-        mark_report_sent(state, key, fingerprint, report_type="standings", competition_id=competition_id, season=season, stage=group)
+        mark_report_sent(
+            state, key, fingerprint,
+            report_type="standings",
+            competition_id=competition_id,
+            season=season,
+            stage=group,
+            stage_status="completed",
+        )
         sent += 1
 
     return sent
 
 
-def _send_overall_table(state: dict, data: dict, competition_id: str, output_dir: Path) -> int:
+def _send_overall_table(
+    state: dict,
+    data: dict,
+    competition_id: str,
+    output_dir: Path,
+) -> int:
     if is_grouped_standings(data):
         if not all_groups_complete(data):
             return 0
@@ -107,9 +131,14 @@ def _send_overall_table(state: dict, data: dict, competition_id: str, output_dir
         "competitionId": competition_id,
         "season": data.get("season") or "",
     }
-    fingerprint = table_fingerprint({"group": key_suffix, "rows": [
-        row for table in table_payload["tables"] for row in table.get("rows") or []
-    ]})
+    fingerprint = table_fingerprint({
+        "group": key_suffix,
+        "rows": [
+            row
+            for table in table_payload["tables"]
+            for row in table.get("rows") or []
+        ],
+    })
     key = f"table:{competition_id}:{table_payload['season']}:{key_suffix}"
     if not register_if_changed(
         state,
@@ -119,38 +148,48 @@ def _send_overall_table(state: dict, data: dict, competition_id: str, output_dir
         competition_id=competition_id,
         season=str(table_payload["season"]),
         stage=key_suffix,
+        stage_status="completed",
     ):
         return 0
 
     output = output_dir / f"{competition_id}_TABLE_FINAL.png"
     render_standings(data, dt.date.today(), output)
     send_photo(output, f"📊 جدول {data.get('competitionName') or competition_id}")
-    mark_report_sent(state, key, fingerprint, report_type="standings", competition_id=competition_id, season=str(table_payload["season"]), stage=key_suffix)
+    mark_report_sent(
+        state, key, fingerprint,
+        report_type="standings",
+        competition_id=competition_id,
+        season=str(table_payload["season"]),
+        stage=key_suffix,
+        stage_status="completed",
+    )
     return 1
 
 
-def _send_knockout(state: dict, data: dict, competition_id: str, output_dir: Path) -> int:
+def _send_knockout(
+    state: dict,
+    data: dict,
+    competition_id: str,
+    output_dir: Path,
+) -> int:
     rounds = data.get("knockoutRounds") or []
     stage = current_knockout_stage(rounds)
     if not stage:
         return 0
 
-    ordered_rounds = sorted(
-        [item for item in rounds if isinstance(item, dict)],
-        key=lambda item: publisher_stage_key(item),
-    )
-    stage_index = next((i for i, item in enumerate(ordered_rounds) if item is stage), 0)
-    # The first round is published only after it has a completed match.
-    # A later round is published as soon as it becomes the current round,
-    # because its participants are now known.
-    if not knockout_ready(stage):
-        if stage_index == 0:
-            return 0
+    status = knockout_stage_status(stage)
+    if status == "not_ready":
+        return 0
 
-    fingerprint = knockout_fingerprint(data, stage)
     label = str(stage.get("stage") or "مرحله حذفی")
     season = str(data.get("season") or "فصل جاری")
-    key = f"knockout:{competition_id}:{season}:current"
+
+    # Stage + status are deliberately separate identities. This means
+    # teams_known, in_progress and completed can each be published once,
+    # while unchanged data inside one status is suppressed.
+    key = f"knockout:{competition_id}:{season}:{label}:{status}"
+    fingerprint = knockout_fingerprint(data, stage, status)
+
     if not register_if_changed(
         state,
         key=key,
@@ -159,14 +198,25 @@ def _send_knockout(state: dict, data: dict, competition_id: str, output_dir: Pat
         competition_id=competition_id,
         season=season,
         stage=label,
+        stage_status=status,
     ):
         return 0
 
     safe = "".join(ch if ch.isalnum() else "_" for ch in label).strip("_")
-    output = output_dir / f"{competition_id}_KNOCKOUT_{safe}.png"
+    output = output_dir / f"{competition_id}_KNOCKOUT_{safe}_{status}.png"
     render_knockout_standings(data, dt.date.today(), output, stage=stage)
-    send_photo(output, f"🌳 نمودار {data.get('competitionName') or competition_id} | {label}")
-    mark_report_sent(state, key, fingerprint, report_type="knockout", competition_id=competition_id, season=season, stage=label)
+    send_photo(
+        output,
+        f"🌳 نمودار {data.get('competitionName') or competition_id} | {label}",
+    )
+    mark_report_sent(
+        state, key, fingerprint,
+        report_type="knockout",
+        competition_id=competition_id,
+        season=season,
+        stage=label,
+        stage_status=status,
+    )
     return 1
 
 
