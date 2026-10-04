@@ -53,13 +53,67 @@ def _finished(match: dict) -> bool:
 
 
 def _todays_matches(day: dt.date) -> list[dict]:
+    """Fetch matches from yesterday and today.
+
+    Yesterday is intentionally included because a match can start before
+    midnight in Iran and finish after midnight. The caller uses persisted
+    pending-match state to distinguish those carry-over matches from ordinary
+    completed matches from yesterday.
+    """
     matches = fetch_matches_for_iran_date(day - dt.timedelta(days=1))
     matches += fetch_matches_for_iran_date(day)
     unique = {}
     for match in matches:
-        if _match_date(match) == day:
+        match_date = _match_date(match)
+        if match_date in {day - dt.timedelta(days=1), day}:
             unique[str(match["id"])] = match
     return list(unique.values())
+
+
+def _pending_match_competitions(
+    state: dict,
+    previous_matches: list[dict],
+) -> tuple[set[str], dict[str, dict]]:
+    """Return competitions whose previously unfinished matches have now ended.
+
+    The pending map is persisted between scheduled runs. This lets a 23:00
+    match that finishes at 01:00 trigger publication on the next day's run.
+    """
+    previous_pending = state.get("_pending_matches")
+    if not isinstance(previous_pending, dict):
+        previous_pending = {}
+
+    carryover_competitions: set[str] = set()
+    next_pending: dict[str, dict] = {}
+
+    for match in previous_matches:
+        match_id = str(match.get("id") or "")
+        if not match_id:
+            continue
+
+        competition_ids = {
+            str(x)
+            for x in (match.get("competitionIds") or [])
+            if str(x) in COMPETITION_IDS
+        }
+        league_id = str(match.get("leagueId") or "")
+        if league_id in COMPETITION_IDS:
+            competition_ids.add(league_id)
+        if not competition_ids:
+            continue
+
+        if _finished(match):
+            if match_id in previous_pending:
+                carryover_competitions.update(competition_ids)
+        else:
+            next_pending[match_id] = {
+                "competition_ids": sorted(competition_ids),
+                "start_date": _match_date(match).isoformat()
+                if _match_date(match)
+                else None,
+            }
+
+    return carryover_competitions, next_pending
 
 
 def _competition_matches(matches: list[dict], competition_id: str) -> list[dict]:
@@ -285,31 +339,58 @@ def publish(day: dt.date, competition_id: str | None = None) -> int:
         return sent
 
     matches = _todays_matches(day)
-    if not matches:
-        print(f"[PUBLISH] No matches on {day.isoformat()}; nothing to publish.")
-        return 0
+    state = load_state()
 
-    candidates = sorted({
+    previous_matches = [
+        match for match in matches
+        if _match_date(match) == day - dt.timedelta(days=1)
+    ]
+    today_matches = [
+        match for match in matches
+        if _match_date(match) == day
+    ]
+
+    carryover_competitions, next_pending = _pending_match_competitions(
+        state, previous_matches
+    )
+    state["_pending_matches"] = next_pending
+
+    today_competitions = {
         str(cid)
-        for match in matches
+        for match in today_matches
         for cid in (match.get("competitionIds") or [match.get("leagueId")])
         if str(cid) in COMPETITION_IDS
-    })
-    state = load_state()
+    }
+    candidates = sorted(today_competitions | carryover_competitions)
+
+    if not candidates:
+        save_state(state)
+        print(f"[PUBLISH] No relevant matches on {day.isoformat()}; nothing to publish.")
+        return 0
+
     sent = 0
 
     for competition_id in candidates:
-        day_matches = _competition_matches(matches, competition_id)
-        if not day_matches:
+        day_matches = _competition_matches(today_matches, competition_id)
+        carryover = competition_id in carryover_competitions
+
+        # A normal table publication waits for today's match day to finish.
+        # A carry-over match from yesterday is independently eligible as soon
+        # as that previously unfinished match is confirmed finished.
+        today_complete = bool(day_matches) and all(
+            _finished(match) for match in day_matches
+        )
+        if not today_complete and not carryover:
             continue
 
         data = fetch_standings(competition_id)
         output_dir = Path("output/standings") / competition_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Tables are published only after every selected match of this
-        # competition on the Iran calendar day is finished.
-        if all(_finished(match) for match in day_matches):
+        # Tables are published after today's competition matches finish,
+        # or immediately when a previously unfinished match from yesterday
+        # has now finished after crossing midnight.
+        if today_complete or carryover:
             if data.get("tables"):
                 if is_grouped_standings(data):
                     sent += _send_grouped_tables(state, data, competition_id, output_dir)
