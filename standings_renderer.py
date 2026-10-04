@@ -1017,9 +1017,10 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     )
     season = str(data.get("season") or "فصل جاری")
 
-    # The first round is the most spread-out column. Every following round is
-    # positioned at the midpoint of the two preceding matches, producing the
-    # familiar shrinking tournament-tree geometry.
+    # The first knockout round defines the vertical extent of the bracket.
+    # It must occupy the full available poster height regardless of whether the
+    # competition starts at the round of 16, quarterfinals, or a later stage.
+    # Later rounds are then placed at the midpoint of the matches feeding them.
     cols = len(rounds)
     side = 42
     gap = 22
@@ -1028,19 +1029,39 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
     # Keep every knockout column inside the 1600px canvas; a fixed 245px minimum overflowed on long brackets.
     card_w = max(185, min(330, usable_width // cols))
 
-    # Build a real tournament-tree geometry. The first round is spread out;
-    # every later round is positioned at the midpoint of the source matches
-    # that feed it. Therefore the distance from the first to the last card
-    # shrinks naturally as the number of matches halves:
-    # 8 -> 4 -> 2 -> 1.
     first_count = max(1, len(rounds[0].get("matchups") or []))
     body_top = HEADER_H + 70
-    first_step = max(card_h + 46, 154)
+    bottom_margin = 70
     top_center = body_top + card_h / 2
-    first_centers = [
-        top_center + i * first_step
-        for i in range(first_count)
-    ]
+    bottom_center = max(
+        top_center,
+        1600 - bottom_margin - card_h / 2,
+    )
+
+    # A large first round (for example 16 matches) needs a taller poster so
+    # the cards never overlap. For smaller first rounds, keep the standard
+    # poster height and distribute those matches from top to bottom. This
+    # means a 4-match quarterfinal bracket fills the same vertical canvas that
+    # an 8-match round-of-16 bracket fills, instead of leaving the lower half
+    # empty.
+    min_step = card_h + 46
+    required_height = int(
+        body_top
+        + card_h
+        + bottom_margin
+        + max(0, first_count - 1) * min_step
+    )
+    height = max(1600, required_height)
+    bottom_center = height - bottom_margin - card_h / 2
+
+    if first_count == 1:
+        first_centers = [(top_center + bottom_center) / 2]
+    else:
+        first_step = (bottom_center - top_center) / (first_count - 1)
+        first_centers = [
+            top_center + i * first_step
+            for i in range(first_count)
+        ]
 
     all_centers: list[list[float]] = [first_centers]
     for ri in range(1, len(rounds)):
@@ -1063,9 +1084,6 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
             )
 
         all_centers.append(centers)
-
-    last_center = max(max(c) for c in all_centers if c)
-    height = max(1600, int(last_center + card_h / 2 + 70))
 
     image = Image.new("RGBA", (WIDTH, height), BG + (255,))
     draw = ImageDraw.Draw(image)
