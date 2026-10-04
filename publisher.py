@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from report_state import canonical_hash, report_changed, mark_report_sent
+from report_state import canonical_hash, report_changed
 
 _STAGE_ORDER = {
     "پلی‌آف": 10,
