@@ -813,6 +813,52 @@ def _fixture_stage_text(match: dict) -> str:
     return str(value or "").strip().lower()
 
 
+def _fixture_score_value(team: dict, match: dict, side: str) -> int | None:
+    candidates = [
+        team.get("score"),
+        team.get("currentScore"),
+        team.get("displayScore"),
+        team.get("goals"),
+        match.get(f"{side}Score"),
+        match.get(f"{side}_score"),
+        match.get(f"{side}Goals"),
+    ]
+    for value in candidates:
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+            return int(value)
+        if isinstance(value, dict):
+            for key in ("current", "display", "value", "score", "goals"):
+                nested = value.get(key)
+                if isinstance(nested, (int, float)):
+                    return int(nested)
+                if isinstance(nested, str) and nested.strip().lstrip("-").isdigit():
+                    return int(nested)
+    return None
+
+
+def _fixture_penalty_score(match: dict) -> dict | None:
+    value = match.get("penaltyScore") or match.get("penaltyScores")
+    if isinstance(value, dict):
+        home = value.get("home")
+        away = value.get("away")
+        if isinstance(home, dict):
+            home = home.get("score") or home.get("value")
+        if isinstance(away, dict):
+            away = away.get("score") or away.get("value")
+        if isinstance(home, (int, float)) and isinstance(away, (int, float)):
+            return {"home": int(home), "away": int(away)}
+    for container_key in ("shootout", "penalties", "penaltyShootout"):
+        container = match.get(container_key)
+        if isinstance(container, dict):
+            home = container.get("home") or container.get("homeScore")
+            away = container.get("away") or container.get("awayScore")
+            if isinstance(home, (int, float)) and isinstance(away, (int, float)):
+                return {"home": int(home), "away": int(away)}
+    return None
+
+
 def _normalize_fixture_match(match: dict) -> dict:
     home = match.get("home") or {}
     away = match.get("away") or {}
@@ -826,8 +872,8 @@ def _normalize_fixture_match(match: dict) -> dict:
             "id": str(away.get("id") or away.get("teamId") or ""),
             "name": str(away.get("name") or away.get("teamName") or "نامشخص"),
         },
-        "homeScore": home.get("score") if home.get("score") is not None else match.get("homeScore"),
-        "awayScore": away.get("score") if away.get("score") is not None else match.get("awayScore"),
+        "homeScore": _fixture_score_value(home, match, "home"),
+        "awayScore": _fixture_score_value(away, match, "away"),
         "winner": str(match.get("winner") or ""),
         "bestOf": 1,
         "tbdTeam1": False,
@@ -836,7 +882,7 @@ def _normalize_fixture_match(match: dict) -> dict:
         "aggregatedResult": {},
         "aggregatedWinner": None,
         "aggregatedLoser": None,
-        "penaltyScore": match.get("penaltyScore") if isinstance(match.get("penaltyScore"), dict) else None,
+        "penaltyScore": _fixture_penalty_score(match),
         "raw": match,
     }
 
