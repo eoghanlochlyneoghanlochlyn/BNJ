@@ -41,7 +41,7 @@ jobs:
           mkdir -p output/standings
           for ID in "${IDS[@]}"; do
             ID="${ID//[[:space:]]/}"
-            python - "$ID" "${{ inputs.season }}" <<'PY'
+            if ! python - "$ID" "${{ inputs.season }}" <<'PY'
           import datetime as dt
           import sys
           from pathlib import Path
@@ -105,6 +105,9 @@ jobs:
           elif not data.get("tables"):
               raise RuntimeError(f"{competition_id}: no standings or knockout output available")
           PY
+            then
+              echo "::warning::Competition $ID failed or has no standings/knockout output; skipping it and continuing."
+            fi
           done
 
       - name: Run standings unit tests
