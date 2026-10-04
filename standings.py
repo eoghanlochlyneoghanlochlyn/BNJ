@@ -587,7 +587,7 @@ def _find_shootout_score(node: Any) -> dict | None:
 
 
 def _fetch_match_result(match_id: Any, home_id: Any = None, away_id: Any = None) -> tuple[int | None, int | None, dict | None]:
-    """Read the final score (and shootout score) from FotMob matchDetails."""
+    """Read the canonical match score from FotMob matchDetails."""
     if not match_id:
         return None, None, None
     try:
@@ -595,7 +595,7 @@ def _fetch_match_result(match_id: Any, home_id: Any = None, away_id: Any = None)
             f"{FOTMOB_BASE_URL}/api/data/matchDetails",
             params={"matchId": str(match_id)},
             headers=HEADERS,
-            timeout=15,
+            timeout=20,
         )
         response.raise_for_status()
         payload = response.json()
@@ -603,50 +603,84 @@ def _fetch_match_result(match_id: Any, home_id: Any = None, away_id: Any = None)
         print(f"[STANDINGS] knockout match {match_id}: result details unavailable: {error}")
         return None, None, None
 
-    def as_score(value: Any) -> int | None:
+    def score(value: Any) -> int | None:
+        if isinstance(value, bool):
+            return None
         if isinstance(value, (int, float)):
             return int(value)
         if isinstance(value, str) and value.strip().lstrip("-").isdigit():
             return int(value)
         if isinstance(value, dict):
-            for key in ("current", "display", "value", "score", "goals"):
-                score = as_score(value.get(key))
-                if score is not None:
-                    return score
+            for key in ("score", "current", "display", "value", "goals"):
+                result = score(value.get(key))
+                if result is not None:
+                    return result
         return None
 
-    def walk(node: Any) -> tuple[int | None, int | None] | None:
-        if isinstance(node, dict):
-            home = node.get("home") if isinstance(node.get("home"), dict) else None
-            away = node.get("away") if isinstance(node.get("away"), dict) else None
-            if home and away:
+    def teams_score(node: Any) -> tuple[int | None, int | None] | None:
+        if not isinstance(node, dict):
+            return None
+        teams = node.get("teams")
+        if isinstance(teams, dict):
+            home = teams.get("home")
+            away = teams.get("away")
+            if isinstance(home, dict) and isinstance(away, dict):
                 hid = str(home.get("id") or home.get("teamId") or "")
                 aid = str(away.get("id") or away.get("teamId") or "")
                 if (not home_id or hid == str(home_id)) and (not away_id or aid == str(away_id)):
-                    hs = as_score(home.get("score"))
-                    aw = as_score(away.get("score"))
-                    if hs is None:
-                        hs = as_score(node.get("homeScore"))
-                    if aw is None:
-                        aw = as_score(node.get("awayScore"))
-                    if hs is not None or aw is not None:
+                    hs = score(home.get("score"))
+                    aw = score(away.get("score"))
+                    if hs is not None and aw is not None:
                         return hs, aw
-            hs = as_score(node.get("homeScore"))
-            aw = as_score(node.get("awayScore"))
-            if hs is not None or aw is not None:
-                return hs, aw
-            for value in node.values():
-                found = walk(value)
-                if found is not None:
-                    return found
-        elif isinstance(node, list):
-            for value in node:
-                found = walk(value)
-                if found is not None:
-                    return found
+        home = node.get("home")
+        away = node.get("away")
+        if isinstance(home, dict) and isinstance(away, dict):
+            hid = str(home.get("id") or home.get("teamId") or "")
+            aid = str(away.get("id") or away.get("teamId") or "")
+            if (not home_id or hid == str(home_id)) and (not away_id or aid == str(away_id)):
+                hs = score(home.get("score"))
+                aw = score(away.get("score"))
+                if hs is None:
+                    hs = score(node.get("homeScore"))
+                if aw is None:
+                    aw = score(node.get("awayScore"))
+                if hs is not None and aw is not None:
+                    return hs, aw
         return None
 
-    result = walk(payload)
+    candidates = [payload]
+    if isinstance(payload, dict):
+        content = payload.get("content")
+        if isinstance(content, dict):
+            candidates.extend([
+                content,
+                content.get("header"),
+                content.get("matchFacts"),
+            ])
+    result = None
+    for candidate in candidates:
+        result = teams_score(candidate)
+        if result is not None:
+            break
+
+    if result is None:
+        def walk(node: Any) -> tuple[int | None, int | None] | None:
+            if isinstance(node, dict):
+                pair = teams_score(node)
+                if pair is not None:
+                    return pair
+                for value in node.values():
+                    found = walk(value)
+                    if found is not None:
+                        return found
+            elif isinstance(node, list):
+                for value in node:
+                    found = walk(value)
+                    if found is not None:
+                        return found
+            return None
+        result = walk(payload)
+
     penalty = _fetch_penalty_score(match_id, home_id, away_id)
     if result is None:
         return None, None, penalty
