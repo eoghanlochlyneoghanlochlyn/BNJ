@@ -667,6 +667,103 @@ def has_knockout(data: dict) -> bool:
     return bool(data.get("knockoutRounds"))
 
 
+def _extract_single_matchup(data: Any) -> dict | None:
+    """Extract a lone competition match when FotMob has no table/bracket."""
+    candidates: list[dict] = []
+    seen: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            home = node.get("home")
+            away = node.get("away")
+            match_id = node.get("matchId") or node.get("match_id")
+            if match_id is None:
+                match_id = node.get("id")
+            if (
+                isinstance(home, dict)
+                and isinstance(away, dict)
+                and home.get("id") is not None
+                and away.get("id") is not None
+                and match_id is not None
+            ):
+                key = str(match_id)
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append(node)
+            for value in node.values():
+                if isinstance(value, (dict, list)):
+                    walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                if isinstance(value, (dict, list)):
+                    walk(value)
+
+    walk(data)
+    if len(candidates) != 1:
+        return None
+
+    raw = candidates[0]
+    home = raw.get("home") or {}
+    away = raw.get("away") or {}
+    home_score = _as_int(raw.get("homeScore"))
+    away_score = _as_int(raw.get("awayScore"))
+    if home_score is None:
+        home_score = _as_int(home.get("score"))
+    if away_score is None:
+        away_score = _as_int(away.get("score"))
+
+    return {
+        "number": 1,
+        "homeTeamId": str(home.get("id") or ""),
+        "awayTeamId": str(away.get("id") or ""),
+        "homeTeam": _clean(home.get("name") or home.get("longName")),
+        "awayTeam": _clean(away.get("name") or away.get("longName")),
+        "homeScore": home_score,
+        "awayScore": away_score,
+        "winner": str(raw.get("winner") or ""),
+        "bestOf": 1,
+        "tbdTeam1": False,
+        "tbdTeam2": False,
+        "matches": [{"matchId": str(raw.get("matchId") or raw.get("match_id") or raw.get("id"))}],
+        "aggregatedResult": {},
+        "aggregatedWinner": None,
+        "aggregatedLoser": None,
+        "penaltyScore": raw.get("penaltyScore") if isinstance(raw.get("penaltyScore"), dict) else None,
+        "raw": raw,
+    }
+
+
+def _fetch_single_matchup(competition_id: str, season: str | None) -> dict | None:
+    """Fallback for single-match competitions that expose no table/bracket."""
+    params = {"id": str(competition_id)}
+    if season:
+        params["season"] = season
+    try:
+        response = requests.get(
+            f"{FOTMOB_BASE_URL}/api/data/fixtures",
+            params=params,
+            headers=HEADERS,
+            timeout=40,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, (dict, list)):
+            return None
+        return _extract_single_matchup(payload)
+    except (requests.RequestException, ValueError) as error:
+        print(f"[STANDINGS] {competition_id}: single-match fallback unavailable: {error}")
+        return None
+
+
+def _single_match_knockout(matchup: dict) -> list[dict]:
+    return [{
+        "stage": "فینال",
+        "participantCount": 2,
+        "matchups": [matchup],
+        "raw": matchup.get("raw") or {},
+    }]
+
+
 def fetch_standings(competition_id: str, season: str | None = None) -> dict:
     params = {"id": str(competition_id)}
     if season:
@@ -687,10 +784,20 @@ def fetch_standings(competition_id: str, season: str | None = None) -> dict:
     tables = _extract_tables(data)
     knockout_rounds = _extract_knockout(data)
     _enrich_knockout_penalties(knockout_rounds)
+
+    # Some super cups and one-off competitions have no standings or bracket
+    # in FotMob at all. If the competition has exactly one fixture, represent
+    # that match as a one-card final instead of treating the competition as an
+    # error. Competitions with multiple fixtures still need real knockout data.
     if not tables and not knockout_rounds:
-        raise RuntimeError(
-            f"No standings or knockout data found for FotMob competition {competition_id}."
-        )
+        single_match = _fetch_single_matchup(competition_id, season)
+        if single_match is not None:
+            knockout_rounds = _single_match_knockout(single_match)
+            print(f"[STANDINGS] {competition_id}: single-match fallback -> final")
+        else:
+            raise RuntimeError(
+                f"No standings or knockout data found for FotMob competition {competition_id}."
+            )
 
     cid, name = _extract_competition(data, str(competition_id))
     selected_season = _extract_season(data)
