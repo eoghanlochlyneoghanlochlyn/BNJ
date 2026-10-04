@@ -659,7 +659,11 @@ def _extract_knockout(data: dict) -> list[dict]:
                 or round_data.get("roundName")
                 or round_data.get("label")
             ).casefold()
-            if raw_stage in {"round five", "round 5"}:
+            # FotMob's EFL Cup payload can expose the 16-team stage as
+            # "Round Five", but the stage label is not always present at the
+            # top level of the round object. For this competition, 8 matchups
+            # unambiguously identify that stage as the round of 16.
+            if raw_stage in {"round five", "round 5"} or len(normalized["matchups"]) == 8:
                 normalized["stage"] = "یک‌هشتم نهایی"
 
         signature = (
