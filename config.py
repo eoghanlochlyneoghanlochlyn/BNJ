@@ -18,6 +18,11 @@ COMPETITION_IDS = {
     "138", "10607", "10199", "9809", "9807",
 }
 
+# Numeric FotMob IDs for competitions that should not produce a standings/knockout poster.
+# FIFA Intercontinental Cup (10703) is intentionally excluded because FotMob
+# exposes its structure in a way that does not render correctly as a bracket.
+CHART_EXCLUDED_COMPETITION_IDS = {"10703"}
+
 # Numeric FotMob IDs for the five requested domestic leagues.
 MAJOR_LEAGUE_IDS = {"47", "87", "55", "54", "53"}
 
