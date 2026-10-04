@@ -1117,14 +1117,44 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
         (MARGIN_X, HEADER_H - 22, WIDTH - MARGIN_X, HEADER_H - 22),
         fill=BORDER, width=2
     )
-    _draw_standings_title(
-        draw, WIDTH - MARGIN_X, 108, f"نمودار حذفی {competition}"
-    )
-    _draw_text(
-        draw, (MARGIN_X, 108),
-        season.replace("2026/2027", "2026/27"),
-        _latin_font(27, True), MUTED, "lm", "ltr"
-    )
+    # Match the league-table header exactly: competition name on the
+    # right, then season, then the competition logo.
+    title_y = 108
+    title_right = WIDTH - MARGIN_X
+    title_text = f"نمودار {competition}"
+    title_width = _draw_standings_title(draw, title_right, title_y, title_text)
+
+    season_text = season.replace("2026/2027", "2026/27") if season else ""
+    season_font = _latin_font(27, True)
+    season_gap = 20
+    season_right = title_right - title_width - season_gap
+    if season_text:
+        _draw_text(
+            draw,
+            (season_right, title_y),
+            season_text,
+            season_font,
+            MUTED,
+            "rm",
+            "ltr",
+        )
+
+    season_bbox = draw.textbbox(
+        (0, 0),
+        season_text,
+        font=season_font,
+        anchor="rm",
+        direction="ltr",
+        language="en",
+    ) if season_text else (0, 0, 0, 0)
+    season_width = season_bbox[2] - season_bbox[0]
+
+    logo_gap = 18
+    league_logo = _league_logo(competition_id)
+    if league_logo:
+        logo_x = season_right - season_width - logo_gap - league_logo.width
+        logo_y = title_y - league_logo.height / 2
+        image.alpha_composite(league_logo, (int(logo_x), int(logo_y)))
 
     positions: list[list[tuple[float, float, float, float]]] = []
     for ri, round_data in enumerate(rounds):
