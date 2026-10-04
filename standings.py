@@ -842,7 +842,11 @@ def _normalize_fixture_match(match: dict) -> dict:
 
 
 def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
-    """Fetch the 2026 UEFA World Cup qualifying playoff bracket from fixtures."""
+    """Build the UEFA 2026 playoff tree from fixtures plus the official path draw.
+
+    FotMob does not expose the bracket tree reliably, so the path relationship
+    is defined here, while scores/results are read from FotMob fixtures.
+    """
     params = {"id": "10195"}
     if season:
         params["season"] = season
@@ -856,41 +860,149 @@ def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
         response.raise_for_status()
         payload = response.json()
     except (requests.RequestException, ValueError) as error:
-        print(f"[STANDINGS] 10195: UEFA playoff fallback unavailable: {error}")
+        print(f"[STANDINGS] 10195: UEFA playoff fixtures unavailable: {error}")
         return []
 
     fixtures = _extract_fixture_matchups(payload)
-    semifinals = []
-    finals = []
+    by_pair: dict[frozenset[str], dict] = {}
     for fixture in fixtures:
-        stage = _fixture_stage_text(fixture)
-        if "semi-final" in stage or "semifinal" in stage or "semi final" in stage:
-            semifinals.append(_normalize_fixture_match(fixture))
-        elif "final" in stage:
-            finals.append(_normalize_fixture_match(fixture))
+        home = fixture.get("home") or {}
+        away = fixture.get("away") or {}
+        home_id = str(home.get("id") or home.get("teamId") or "")
+        away_id = str(away.get("id") or away.get("teamId") or "")
+        if home_id and away_id:
+            by_pair[frozenset((home_id, away_id))] = fixture
 
-    if len(semifinals) != 8 or len(finals) != 4:
-        print(
-            f"[STANDINGS] 10195: expected 8 playoff semifinals + 4 finals, "
-            f"found {len(semifinals)} + {len(finals)}"
-        )
-        return []
+    # Official 2026 draw: two semi-finals form each path, and their winners
+    # meet in that path's final. The relationships are fixed before matches.
+    team_ids = {
+        "ایتالیا": "8204",
+        "ایرلند شمالی": "10259",
+        "ولز": "5790",
+        "بوسنی و هرزگوین": "10106",
+        "اوکراین": "6718",
+        "سوئد": "8520",
+        "لهستان": "8568",
+        "آلبانی": "10024",
+        "ترکیه": "6595",
+        "رومانی": "9730",
+        "اسلواکی": "8497",
+        "کوزوو": "430156",
+        "دانمارک": "8238",
+        "مقدونیه شمالی": "8260",
+        "چک": "8496",
+        "ایرلند": "5791",
+    }
+    paths = [
+        [("ایتالیا", "ایرلند شمالی"), ("ولز", "بوسنی و هرزگوین")],
+        [("اوکراین", "سوئد"), ("لهستان", "آلبانی")],
+        [("ترکیه", "رومانی"), ("اسلواکی", "کوزوو")],
+        [("دانمارک", "مقدونیه شمالی"), ("چک", "ایرلند")],
+    ]
+
+    def normalize(fixture: dict) -> dict:
+        return _normalize_fixture_match(fixture)
+
+    semifinals: list[dict] = []
+    winners_by_path: list[list[dict]] = []
+    for path in paths:
+        path_matches: list[dict] = []
+        path_winners: list[dict] = []
+        for home_name, away_name in path:
+            key = frozenset((team_ids[home_name], team_ids[away_name]))
+            fixture = by_pair.get(key)
+            if fixture is None:
+                print(f"[STANDINGS] 10195: missing fixture {home_name} vs {away_name}")
+                return []
+            match = normalize(fixture)
+            path_matches.append(match)
+            path_winners.append(match)
+        winners_by_path.append(path_winners)
+        semifinals.extend(path_matches)
+
+    def winner_name(match: dict) -> tuple[str, str] | None:
+        home_score = match.get("homeScore")
+        away_score = match.get("awayScore")
+        if not isinstance(home_score, (int, float)) or not isinstance(away_score, (int, float)):
+            return None
+        if home_score > away_score:
+            return str(match["home"]["name"]), str(match["home"]["id"])
+        if away_score > home_score:
+            return str(match["away"]["name"]), str(match["away"]["id"])
+        penalty = match.get("penaltyScore") or {}
+        if isinstance(penalty, dict):
+            hp = penalty.get("home")
+            ap = penalty.get("away")
+            if isinstance(hp, (int, float)) and isinstance(ap, (int, float)):
+                if hp > ap:
+                    return str(match["home"]["name"]), str(match["home"]["id"])
+                if ap > hp:
+                    return str(match["away"]["name"]), str(match["away"]["id"])
+        return None
+
+    finals: list[dict] = []
+    for path_index, path_matches in enumerate(winners_by_path, 1):
+        winners = [winner_name(match) for match in path_matches]
+        final_fixture = None
+        if all(w is not None for w in winners):
+            ids = [w[1] for w in winners]
+            final_fixture = by_pair.get(frozenset(ids))
+        if final_fixture is not None:
+            final_match = normalize(final_fixture)
+        elif all(w is not None for w in winners):
+            home_name, home_id = winners[0]
+            away_name, away_id = winners[1]
+            final_match = {
+                "home": {"id": home_id, "name": home_name},
+                "away": {"id": away_id, "name": away_name},
+                "homeScore": None,
+                "awayScore": None,
+                "winner": "",
+                "bestOf": 1,
+                "tbdTeam1": False,
+                "tbdTeam2": False,
+                "matches": [],
+                "aggregatedResult": {},
+                "aggregatedWinner": None,
+                "aggregatedLoser": None,
+                "penaltyScore": None,
+                "raw": {"source": "derived-path", "path": path_index},
+            }
+        else:
+            # Results are not complete yet: keep the path relationship visible
+            # with placeholders instead of inventing a final pairing.
+            final_match = {
+                "home": {"id": "", "name": f"برنده بازی {path_index * 2 - 1}"},
+                "away": {"id": "", "name": f"برنده بازی {path_index * 2}"},
+                "homeScore": None,
+                "awayScore": None,
+                "winner": "",
+                "bestOf": 1,
+                "tbdTeam1": True,
+                "tbdTeam2": True,
+                "matches": [],
+                "aggregatedResult": {},
+                "aggregatedWinner": None,
+                "aggregatedLoser": None,
+                "penaltyScore": None,
+                "raw": {"source": "derived-path", "path": path_index},
+            }
+        finals.append(final_match)
 
     return [
         {
             "stage": "نیمه‌نهایی",
             "participantCount": 16,
             "matchups": semifinals,
-            "raw": {"source": "fixtures", "competitionId": "10195"},
+            "raw": {"source": "fixtures+draw", "competitionId": "10195", "pathCount": 4},
         },
         {
             "stage": "فینال",
             "participantCount": 8,
             "matchups": finals,
-            "raw": {"source": "fixtures", "competitionId": "10195"},
+            "raw": {"source": "fixtures+draw", "competitionId": "10195", "pathCount": 4},
         },
     ]
-
 
 
 def _manual_uefa_world_cup_playoffs() -> list[dict]:
