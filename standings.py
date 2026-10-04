@@ -764,6 +764,134 @@ def _single_match_knockout(matchup: dict) -> list[dict]:
     }]
 
 
+
+def _extract_fixture_matchups(data: Any) -> list[dict]:
+    """Recursively collect unique fixture-like matchups from a FotMob payload."""
+    found: list[dict] = []
+    seen: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            home = node.get("home") if isinstance(node.get("home"), dict) else None
+            away = node.get("away") if isinstance(node.get("away"), dict) else None
+            match_id = node.get("matchId") or node.get("match_id") or node.get("id")
+            if home and away and match_id is not None:
+                key = str(match_id)
+                if key not in seen:
+                    seen.add(key)
+                    item = dict(node)
+                    item["_fixture_stage"] = (
+                        node.get("stage")
+                        or node.get("roundName")
+                        or node.get("round")
+                        or node.get("stageName")
+                        or node.get("stage_name")
+                        or node.get("round_name")
+                        or node.get("roundInfo")
+                    )
+                    found.append(item)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(data)
+    return found
+
+
+def _fixture_stage_text(match: dict) -> str:
+    value = match.get("_fixture_stage")
+    if isinstance(value, dict):
+        value = (
+            value.get("name")
+            or value.get("title")
+            or value.get("roundName")
+            or value.get("stageName")
+            or value.get("round")
+        )
+    return str(value or "").strip().lower()
+
+
+def _normalize_fixture_match(match: dict) -> dict:
+    home = match.get("home") or {}
+    away = match.get("away") or {}
+    match_id = match.get("matchId") or match.get("match_id") or match.get("id")
+    return {
+        "home": {
+            "id": str(home.get("id") or home.get("teamId") or ""),
+            "name": str(home.get("name") or home.get("teamName") or "نامشخص"),
+        },
+        "away": {
+            "id": str(away.get("id") or away.get("teamId") or ""),
+            "name": str(away.get("name") or away.get("teamName") or "نامشخص"),
+        },
+        "homeScore": home.get("score") if home.get("score") is not None else match.get("homeScore"),
+        "awayScore": away.get("score") if away.get("score") is not None else match.get("awayScore"),
+        "winner": str(match.get("winner") or ""),
+        "bestOf": 1,
+        "tbdTeam1": False,
+        "tbdTeam2": False,
+        "matches": [{"matchId": str(match_id)}],
+        "aggregatedResult": {},
+        "aggregatedWinner": None,
+        "aggregatedLoser": None,
+        "penaltyScore": match.get("penaltyScore") if isinstance(match.get("penaltyScore"), dict) else None,
+        "raw": match,
+    }
+
+
+def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
+    """Fetch the 2026 UEFA World Cup qualifying playoff bracket from fixtures."""
+    params = {"id": "10195"}
+    if season:
+        params["season"] = season
+    try:
+        response = requests.get(
+            f"{FOTMOB_BASE_URL}/api/data/fixtures",
+            params=params,
+            headers=HEADERS,
+            timeout=40,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as error:
+        print(f"[STANDINGS] 10195: UEFA playoff fallback unavailable: {error}")
+        return []
+
+    fixtures = _extract_fixture_matchups(payload)
+    semifinals = []
+    finals = []
+    for fixture in fixtures:
+        stage = _fixture_stage_text(fixture)
+        if "semi-final" in stage or "semifinal" in stage or "semi final" in stage:
+            semifinals.append(_normalize_fixture_match(fixture))
+        elif "final" in stage:
+            finals.append(_normalize_fixture_match(fixture))
+
+    if len(semifinals) != 8 or len(finals) != 4:
+        print(
+            f"[STANDINGS] 10195: expected 8 playoff semifinals + 4 finals, "
+            f"found {len(semifinals)} + {len(finals)}"
+        )
+        return []
+
+    return [
+        {
+            "stage": "نیمه‌نهایی",
+            "participantCount": 16,
+            "matchups": semifinals,
+            "raw": {"source": "fixtures", "competitionId": "10195"},
+        },
+        {
+            "stage": "فینال",
+            "participantCount": 8,
+            "matchups": finals,
+            "raw": {"source": "fixtures", "competitionId": "10195"},
+        },
+    ]
+
+
 def fetch_standings(competition_id: str, season: str | None = None) -> dict:
     competition_id = str(competition_id)
     if competition_id in CHART_EXCLUDED_COMPETITION_IDS:
@@ -789,6 +917,10 @@ def fetch_standings(competition_id: str, season: str | None = None) -> dict:
 
     tables = _extract_tables(data)
     knockout_rounds = _extract_knockout(data)
+    if competition_id == "10195" and not knockout_rounds:
+        knockout_rounds = _fetch_uefa_world_cup_playoffs(season)
+        if knockout_rounds:
+            print("[STANDINGS] 10195: UEFA playoff fallback -> semifinals + finals")
     _enrich_knockout_penalties(knockout_rounds)
 
     # Some super cups and one-off competitions have no standings or bracket
