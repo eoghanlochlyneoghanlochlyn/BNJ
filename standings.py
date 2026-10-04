@@ -648,6 +648,20 @@ def _extract_knockout(data: dict) -> list[dict]:
         normalized = _normalize_knockout_round(round_data)
         if not normalized:
             continue
+
+        # EFL Cup (FotMob competition 133) uses "Round Five" for the
+        # 16-team knockout round. In our poster terminology this is the
+        # equivalent of the round of 16.
+        if str(data.get("details", {}).get("id") or "") == "133":
+            raw_stage = _clean(
+                round_data.get("stage")
+                or round_data.get("name")
+                or round_data.get("roundName")
+                or round_data.get("label")
+            ).casefold()
+            if raw_stage in {"round five", "round 5"}:
+                normalized["stage"] = "یک‌هشتم نهایی"
+
         signature = (
             normalized["stage"],
             tuple(
