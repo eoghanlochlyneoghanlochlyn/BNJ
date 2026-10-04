@@ -927,38 +927,6 @@ def _knockout_next_stage(stage: dict) -> dict | None:
     }
 
 
-def _make_knockout_placeholder_stage(label: str, match_count: int, participant_count: int) -> dict:
-    """Create a blank bracket stage when FotMob omits an earlier round."""
-    return {
-        "stage": label,
-        "participantCount": participant_count,
-        "matchups": [
-            {
-                "number": i + 1,
-                "homeTeamId": "",
-                "awayTeamId": "",
-                "homeTeam": "",
-                "awayTeam": "",
-                "homeScore": None,
-                "awayScore": None,
-                "winner": "",
-                "bestOf": 1,
-                "tbdTeam1": True,
-                "tbdTeam2": True,
-                "matches": [],
-                "aggregatedResult": {},
-                "aggregatedWinner": None,
-                "aggregatedLoser": None,
-                "penaltyScore": None,
-                "raw": {},
-            }
-            for i in range(match_count)
-        ],
-        "raw": {},
-        "placeholder": True,
-    }
-
-
 def _ensure_full_knockout_bracket(rounds: list[dict]) -> list[dict]:
     """Keep all available past rounds and extend the tree through the final."""
     if not rounds:
@@ -1054,23 +1022,6 @@ def render_knockout_standings(data: dict, day, output: Path, stage: dict | None 
         ]
         if knockout_from_r16:
             valid_rounds = knockout_from_r16
-
-        # FotMob's EFL Cup (133) currently omits Round Five from the
-        # league knockout payload and exposes only QF -> SF -> Final.
-        # Round Five is the 16-team/8-match stage, i.e. our Round of 16.
-        # Keep the poster scope consistent by inserting that missing stage
-        # only for EFL Cup; never invent it for other competitions.
-        if str(data.get("competitionId") or "") == "133":
-            has_r16 = any(_knockout_stage_key(item) == 40 for item in valid_rounds)
-            if not has_r16 and valid_rounds:
-                valid_rounds.insert(
-                    0,
-                    _make_knockout_placeholder_stage(
-                        "یک‌هشتم نهایی",
-                        match_count=8,
-                        participant_count=16,
-                    ),
-                )
 
     rounds = _ensure_full_knockout_bracket(valid_rounds)
     if not rounds:
