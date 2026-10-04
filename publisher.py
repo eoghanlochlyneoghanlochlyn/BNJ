@@ -31,8 +31,22 @@ def _has_real_matchup(matchup: dict) -> bool:
 
 
 def current_knockout_stage(rounds: list[dict]) -> dict | None:
-    real = [r for r in rounds if isinstance(r, dict) and any(_has_real_matchup(m) for m in r.get("matchups") or [])]
-    return max(real, key=_stage_key) if real else None
+    real = sorted(
+        [r for r in rounds if isinstance(r, dict) and any(_has_real_matchup(m) for m in r.get("matchups") or [])],
+        key=_stage_key,
+    )
+    if not real:
+        return None
+
+    # The current round is the earliest real round that is not fully complete.
+    # Later rounds may already contain known participants (especially manually
+    # defined brackets), but they must not become current before the preceding
+    # round is finished.
+    for stage in real:
+        matchups = [m for m in stage.get("matchups") or [] if _has_real_matchup(m)]
+        if matchups and not all(_matchup_complete(m) for m in matchups):
+            return stage
+    return real[-1]
 
 
 def _matchup_complete(matchup: dict) -> bool:
