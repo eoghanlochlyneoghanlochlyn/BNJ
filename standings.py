@@ -892,6 +892,89 @@ def _fetch_uefa_world_cup_playoffs(season: str | None) -> list[dict]:
     ]
 
 
+
+def _manual_uefa_world_cup_playoffs() -> list[dict]:
+    """Static 2026 UEFA playoff bracket; FotMob does not expose the bracket tree."""
+    def match(
+        home: str,
+        away: str,
+        home_score: int,
+        away_score: int,
+        home_penalty: int | None = None,
+        away_penalty: int | None = None,
+    ) -> dict:
+        penalty = None
+        if home_penalty is not None and away_penalty is not None:
+            penalty = {"home": home_penalty, "away": away_penalty}
+        return {
+            "number": 0,
+            "homeTeamId": "",
+            "awayTeamId": "",
+            "homeTeam": home,
+            "awayTeam": away,
+            "homeScore": home_score,
+            "awayScore": away_score,
+            "winner": "",
+            "bestOf": 1,
+            "tbdTeam1": False,
+            "tbdTeam2": False,
+            "matches": [],
+            "aggregatedResult": {},
+            "aggregatedWinner": None,
+            "aggregatedLoser": None,
+            "penaltyScore": penalty,
+            "raw": {},
+        }
+
+    semifinal_pairs = [
+        ("ایتالیا", "ایرلند شمالی", 2, 0, None, None),
+        ("ولز", "بوسنی و هرزگوین", 1, 1, 2, 4),
+        ("اوکراین", "سوئد", 1, 3, None, None),
+        ("لهستان", "آلبانی", 2, 1, None, None),
+        ("ترکیه", "رومانی", 1, 0, None, None),
+        ("اسلواکی", "کوزوو", 3, 4, None, None),
+        ("دانمارک", "مقدونیه شمالی", 4, 0, None, None),
+        ("چک", "ایرلند", 2, 2, 4, 3),
+    ]
+    final_pairs = [
+        ("بوسنی و هرزگوین", "ایتالیا", 1, 1, 1, 4),
+        ("سوئد", "لهستان", 3, 2, None, None),
+        ("کوزوو", "ترکیه", 0, 1, None, None),
+        ("چک", "دانمارک", 2, 2, 3, 1),
+    ]
+
+    semifinals = [
+        dict(match("home", "away", 0, 0), number=index + 1)
+        for index, match in enumerate([])
+    ]
+    semifinals = []
+    for index, item in enumerate(semifinal_pairs, 1):
+        m = match(*item)
+        m["number"] = index
+        semifinals.append(m)
+
+    finals = []
+    for index, item in enumerate(final_pairs, 1):
+        m = match(*item)
+        m["number"] = index
+        finals.append(m)
+
+    return [
+        {
+            "stage": "نیمه‌نهایی",
+            "participantCount": 16,
+            "matchups": semifinals,
+            "raw": {"source": "manual", "competitionId": "10195", "pathCount": 4},
+        },
+        {
+            "stage": "فینال",
+            "participantCount": 8,
+            "matchups": finals,
+            "raw": {"source": "manual", "competitionId": "10195", "pathCount": 4},
+        },
+    ]
+
+
 def fetch_standings(competition_id: str, season: str | None = None) -> dict:
     competition_id = str(competition_id)
     if competition_id in CHART_EXCLUDED_COMPETITION_IDS:
@@ -921,6 +1004,9 @@ def fetch_standings(competition_id: str, season: str | None = None) -> dict:
         knockout_rounds = _fetch_uefa_world_cup_playoffs(season)
         if knockout_rounds:
             print("[STANDINGS] 10195: UEFA playoff fallback -> semifinals + finals")
+        else:
+            knockout_rounds = _manual_uefa_world_cup_playoffs()
+            print("[STANDINGS] 10195: manual UEFA playoff bracket -> semifinals + finals")
     _enrich_knockout_penalties(knockout_rounds)
 
     # Some super cups and one-off competitions have no standings or bracket
