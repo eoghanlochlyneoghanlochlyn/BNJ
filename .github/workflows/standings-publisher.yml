@@ -33,6 +33,9 @@ jobs:
           sudo apt-get install -y fonts-noto-core
           pip install -r requirements.txt
       - name: Publish changed standings and knockout states
+        env:
+          TELEGRAMBOT: ${{ secrets.TELEGRAMBOT }}
+          TELEGRAMCHANNEL: ${{ secrets.TELEGRAMCHANNEL }}
         run: |
           if [ -n "${{ inputs.date }}" ]; then
             python publish_standings.py --date "${{ inputs.date }}"
