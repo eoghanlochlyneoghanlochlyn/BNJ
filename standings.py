@@ -1319,8 +1319,7 @@ def main() -> None:
     )
 
 
-if __name__ == "__main__":
-    main()
+def _fetch_penalty_score(match_id: Any, home_id: Any = None, away_id: Any = None) -> dict | None:
     if not match_id:
         return None
     try:
@@ -1357,6 +1356,7 @@ if __name__ == "__main__":
     except (requests.RequestException, ValueError) as error:
         print(f"[STANDINGS] knockout match {match_id}: penalty details unavailable: {error}")
         return None
+
 
 def _enrich_knockout_penalties(rounds: list[dict]) -> None:
     """Fill shootout scores from the actual matchDetails payload."""
