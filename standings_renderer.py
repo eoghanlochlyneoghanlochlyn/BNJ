@@ -707,24 +707,22 @@ def _knockout_name_is_persian(name: str) -> bool:
     )
 
 
-def _fit_knockout_name(draw, name: str, right: float, left: float):
-    """Choose a font/direction that actually contains the team's glyphs."""
+def _fit_knockout_name(draw, name: str, right: float, left: float, scale: float = 1.0):
+    """Choose a font/direction that scales with the knockout card size."""
     is_persian = _knockout_name_is_persian(name)
     direction = "rtl" if is_persian else "ltr"
     language = "fa" if is_persian else None
-    for size in (22, 21, 20, 19, 18, 17, 16, 15, 14):
+    sizes = [max(14, round(size * scale)) for size in (22, 21, 20, 19, 18, 17, 16, 15, 14)]
+    for size in sizes:
         font = _font(size, True) if is_persian else _latin_font(size, True)
-        bbox_kwargs = {
-            "font": font,
-            "anchor": "rm",
-            "direction": direction,
-        }
+        bbox_kwargs = {"font": font, "anchor": "rm", "direction": direction}
         if language:
             bbox_kwargs["language"] = language
         bbox = draw.textbbox((0, 0), name, **bbox_kwargs)
         if bbox[2] - bbox[0] <= max(30, right - left):
             return font, direction, language
-    font = _font(14, True) if is_persian else _latin_font(14, True)
+    size = max(14, round(14 * scale))
+    font = _font(size, True) if is_persian else _latin_font(size, True)
     return font, direction, language
 
 
@@ -753,34 +751,45 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
         away_name_raw, away_id, bool(matchup.get("tbdTeam2", False)), raw_away
     )
 
-    # FotMob assigns numeric IDs to some bracket placeholders. The semantic
-    # placeholder check must happen before _team_logo so those IDs never
-    # trigger HTTP requests for nonexistent team logos.
     home_logo = None if home_placeholder else _team_logo(home_id)
     away_logo = None if away_placeholder else _team_logo(away_id)
 
     score, home_penalty, away_penalty = _knockout_match_score(matchup)
-    # Keep the score/shootout block clearly separated from the team-name area.
-    # The shootout suffix is wider than the normal score, so reserve a fixed
-    # left-side column for the complete "score (penalty)" block.
-    score_x = x + 28
-    name_right = x + w - 22
-    score_column_right = x + 112
-    home_y = y + 30
-    away_y = y + 94
+
+    # Scale the complete contents from the original 330x140 card. This keeps
+    # the internal layout proportional when QF/SF/final cards are enlarged.
+    scale = max(1.0, min(w / 330.0, h / 140.0))
+    pad_x = 28.0 * scale
+    name_right = x + w - 22.0 * scale
+    score_x = x + pad_x
+    score_column_right = x + 112.0 * scale
+
+    row_gap = 64.0 * scale
+    row_center = y + h / 2.0
+    home_y = row_center - row_gap / 2.0
+    away_y = row_center + row_gap / 2.0
+
+    def _scaled_logo(logo):
+        if logo is None:
+            return None
+        target = max(1, round(LOGO_SIZE * scale))
+        resized = logo.copy()
+        resized.thumbnail((target, target), Image.Resampling.LANCZOS)
+        return resized
 
     def team_row(yy, name, logo, score_value, penalty_value):
+        logo = _scaled_logo(logo)
         logo_width = logo.width if logo else 0
         if logo:
             logo_x = name_right - logo_width
             image.alpha_composite(logo, (int(logo_x), int(yy - logo.height / 2)))
-            text_right = logo_x - 10
+            text_right = logo_x - 10.0 * scale
         else:
             text_right = name_right
 
-        text_left = score_column_right + 14
+        text_left = score_column_right + 14.0 * scale
         font, name_direction, name_language = _fit_knockout_name(
-            draw, name, text_right, text_left
+            draw, name, text_right, text_left, scale
         )
         name_kwargs = {
             "anchor": "rm",
@@ -790,20 +799,11 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
         if name_language:
             name_kwargs["language"] = name_language
         draw.text((text_right, yy), name, font=font, **name_kwargs)
-        # Do not draw the parentheses with the Persian font: on some
-        # Linux font builds they become tofu squares. Draw the numeric score
-        # with the Persian font and the punctuation with a Latin font that
-        # contains both ASCII parentheses.
+
         main_score = _persian_digits(score_value) if score_value is not None else "—"
-        main_font = _font(25, True)
-        _draw_text(
-            draw, (score_x, yy),
-            main_score,
-            main_font,
-            TEXT,
-            "lm",
-            "ltr",
-        )
+        score_size = max(25, round(25 * scale))
+        main_font = _font(score_size, True)
+        _draw_text(draw, (score_x, yy), main_score, main_font, TEXT, "lm", "ltr")
 
         if penalty_value is not None:
             main_bbox = draw.textbbox(
@@ -811,33 +811,29 @@ def _draw_knockout_match(draw, image, x, y, w, h, matchup):
                 font=main_font, anchor="lm",
                 direction="ltr", language="fa",
             )
-            cursor_x = main_bbox[2] + 6
-            punct_font = _latin_font(25, True)
-            penalty_font = _font(25, True)
+            cursor_x = main_bbox[2] + 6.0 * scale
+            punct_size = max(25, round(25 * scale))
+            punct_font = _latin_font(punct_size, True)
+            penalty_font = _font(punct_size, True)
 
             _draw_text(draw, (cursor_x, yy), "(", punct_font, TEXT, "lm", "ltr")
-            paren_width = draw.textlength("(", font=punct_font)
-            cursor_x += paren_width
-
-            penalty_text = _persian_digits(penalty_value)
+            cursor_x += draw.textlength("(", font=punct_font) + 4.0 * scale
             _draw_text(
                 draw, (cursor_x, yy),
-                penalty_text,
-                penalty_font,
-                TEXT,
-                "lm",
-                "ltr",
+                _persian_digits(penalty_value),
+                penalty_font, TEXT, "lm", "ltr"
             )
             penalty_bbox = draw.textbbox(
-                (cursor_x, yy), penalty_text,
+                (cursor_x, yy), _persian_digits(penalty_value),
                 font=penalty_font, anchor="lm",
                 direction="ltr", language="fa",
             )
-            cursor_x = penalty_bbox[2] + 4
+            cursor_x = penalty_bbox[2] + 4.0 * scale
             _draw_text(draw, (cursor_x, yy), ")", punct_font, TEXT, "lm", "ltr")
 
     team_row(home_y, home_name, home_logo, matchup.get("homeScore"), home_penalty)
     team_row(away_y, away_name, away_logo, matchup.get("awayScore"), away_penalty)
+
 
 def _knockout_stage_key(stage: dict) -> int:
     """Return the canonical tournament order for a knockout round."""
