@@ -27,7 +27,6 @@ def save_state(state: dict) -> None:
 
 
 def already_sent(state: dict, key: str) -> bool:
-    """Backward-compatible boolean check used by fixtures/results."""
     value = state.get(key)
     if isinstance(value, dict):
         return bool(value.get("sent"))
@@ -35,7 +34,6 @@ def already_sent(state: dict, key: str) -> bool:
 
 
 def mark_sent(state: dict, key: str, metadata: dict | None = None) -> None:
-    """Record a sent report. Old boolean callers remain supported."""
     if metadata is None:
         state[key] = True
     else:
@@ -62,14 +60,16 @@ def report_changed(
     fingerprint: str,
     *,
     stage: str | None = None,
+    stage_status: str | None = None,
 ) -> bool:
-    """Return True only when this report state differs from the last sent one."""
     previous = state.get(key)
     if not isinstance(previous, dict):
         return True
     if previous.get("fingerprint") != fingerprint:
         return True
     if stage is not None and previous.get("stage") != stage:
+        return True
+    if stage_status is not None and previous.get("stage_status") != stage_status:
         return True
     return False
 
@@ -83,16 +83,35 @@ def mark_report_sent(
     competition_id: str,
     season: str,
     stage: str | None = None,
+    stage_status: str | None = None,
 ) -> None:
-    mark_sent(
-        state,
-        key,
-        {
-            "fingerprint": fingerprint,
-            "report_type": report_type,
-            "competition_id": str(competition_id),
-            "season": season,
-            "stage": stage,
-            "sent_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-        },
-    )
+    record = {
+        "fingerprint": fingerprint,
+        "report_type": report_type,
+        "competition_id": str(competition_id),
+        "season": season,
+        "stage": stage,
+        "stage_status": stage_status,
+        "sent_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "sent": True,
+    }
+    previous = state.get(key)
+    if isinstance(previous, dict) and isinstance(previous.get("history"), list):
+        history = previous["history"]
+    else:
+        history = []
+        if isinstance(previous, dict) and previous.get("sent"):
+            history.append({
+                "fingerprint": previous.get("fingerprint"),
+                "report_type": previous.get("report_type"),
+                "competition_id": previous.get("competition_id"),
+                "season": previous.get("season"),
+                "stage": previous.get("stage"),
+                "stage_status": previous.get("stage_status"),
+                "sent_at": previous.get("sent_at"),
+            })
+
+    history.append({k: v for k, v in record.items() if k != "sent"})
+    record["history"] = history[-50:]
+    state[key] = record
+    save_state(state)
