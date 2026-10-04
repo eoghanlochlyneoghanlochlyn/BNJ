@@ -12,6 +12,7 @@ from publisher import (
     knockout_fingerprint,
     knockout_ready,
     table_fingerprint,
+    _stage_key as publisher_stage_key,
     register_if_changed,
 )
 from standings import all_groups_complete, fetch_standings, has_knockout, is_grouped_standings
@@ -134,7 +135,11 @@ def _send_knockout(state: dict, data: dict, competition_id: str, output_dir: Pat
     if not stage:
         return 0
 
-    stage_index = next((i for i, item in enumerate(rounds) if item is stage), 0)
+    ordered_rounds = sorted(
+        [item for item in rounds if isinstance(item, dict)],
+        key=lambda item: publisher_stage_key(item),
+    )
+    stage_index = next((i for i, item in enumerate(ordered_rounds) if item is stage), 0)
     # The first round is published only after it has a completed match.
     # A later round is published as soon as it becomes the current round,
     # because its participants are now known.
