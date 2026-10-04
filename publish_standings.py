@@ -6,7 +6,7 @@ from pathlib import Path
 
 from config import COMPETITION_IDS, IRAN_TIMEZONE
 from fotmob import fetch_matches_for_iran_date
-from report_state import load_state, save_state
+from report_state import load_state, save_state, mark_report_sent
 from publisher import (
     current_knockout_stage,
     knockout_fingerprint,
@@ -87,6 +87,7 @@ def _send_grouped_tables(
         output = output_dir / f"{competition_id}_{index}_{safe}.png"
         render_group_standings(data, table, dt.date.today(), output)
         send_photo(output, f"📊 جدول {data.get('competitionName') or competition_id} | {group}")
+        mark_report_sent(state, key, fingerprint, report_type="standings", competition_id=competition_id, season=season, stage=group)
         sent += 1
 
     return sent
@@ -123,6 +124,7 @@ def _send_overall_table(state: dict, data: dict, competition_id: str, output_dir
     output = output_dir / f"{competition_id}_TABLE_FINAL.png"
     render_standings(data, dt.date.today(), output)
     send_photo(output, f"📊 جدول {data.get('competitionName') or competition_id}")
+    mark_report_sent(state, key, fingerprint, report_type="standings", competition_id=competition_id, season=str(table_payload["season"]), stage=key_suffix)
     return 1
 
 
@@ -159,6 +161,7 @@ def _send_knockout(state: dict, data: dict, competition_id: str, output_dir: Pat
     output = output_dir / f"{competition_id}_KNOCKOUT_{safe}.png"
     render_knockout_standings(data, dt.date.today(), output, stage=stage)
     send_photo(output, f"🌳 نمودار {data.get('competitionName') or competition_id} | {label}")
+    mark_report_sent(state, key, fingerprint, report_type="knockout", competition_id=competition_id, season=season, stage=label)
     return 1
 
 
